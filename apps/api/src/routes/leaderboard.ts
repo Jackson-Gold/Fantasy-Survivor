@@ -1,0 +1,42 @@
+import { Router, Request, Response } from 'express';
+import { db } from '../db/index.js';
+import { leagueMembers, users, ledgerTransactions } from '../db/schema.js';
+import { eq, and, sql, desc } from 'drizzle-orm';
+import { requireAuth } from '../middleware/auth.js';
+
+export const leaderboardRouter = Router();
+leaderboardRouter.use(requireAuth);
+
+async function ensureLeagueMember(userId: number, leagueId: number): Promise<boolean> {
+  const [m] = await db
+    .select()
+    .from(leagueMembers)
+    .where(and(eq(leagueMembers.leagueId, leagueId), eq(leagueMembers.userId, userId)));
+  return !!m;
+}
+
+leaderboardRouter.get('/:leagueId', async (req: Request, res: Response) => {
+  const leagueId = parseInt(req.params.leagueId, 10);
+  if (Number.isNaN(leagueId)) {
+    res.status(400).json({ error: 'Invalid league id' });
+    return;
+  }
+  const ok = await ensureLeagueMember(req.user!.id, leagueId);
+  if (!ok) {
+    res.status(404).json({ error: 'League not found' });
+    return;
+  }
+  const rows = await db
+    .select({
+      userId: users.id,
+      username: users.username,
+      total: sql<number>`COALESCE(SUM(${ledgerTransactions.amount}), 0)::real`.as('total'),
+    })
+    .from(leagueMembers)
+    .innerJoin(users, eq(leagueMembers.userId, users.id))
+    .leftJoin(ledgerTransactions, and(eq(ledgerTransactions.leagueId, leagueId), eq(ledgerTransactions.userId, users.id)))
+    .where(eq(leagueMembers.leagueId, leagueId))
+    .groupBy(users.id, users.username)
+    .orderBy(desc(sql`COALESCE(SUM(${ledgerTransactions.amount}), 0)`));
+  res.json({ leaderboard: rows });
+});
