@@ -16,11 +16,26 @@ export async function api<T>(path: string, options?: RequestInit): Promise<T> {
       ...options?.headers,
     },
   });
+  const text = await res.text();
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error((err as { error?: string }).error ?? res.statusText);
+    let err: { error?: string } = { error: res.statusText };
+    if (text && text.trim()) {
+      try {
+        err = JSON.parse(text) as { error?: string };
+      } catch {
+        err.error = text.slice(0, 100) || res.statusText;
+      }
+    }
+    throw new Error(err.error ?? res.statusText);
   }
-  return res.json() as Promise<T>;
+  if (!text || !text.trim()) {
+    return {} as T;
+  }
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error('Invalid response from server');
+  }
 }
 
 export const apiGet = <T>(path: string) => api<T>(path, { method: 'GET' });

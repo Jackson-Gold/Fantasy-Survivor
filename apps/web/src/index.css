@@ -3,5 +3,32 @@
 @tailwind utilities;
 
 body {
-  @apply bg-sand-100 text-ocean-900 antialiased;
+  @apply bg-sand-100 text-ocean-900 antialiased font-sans;
+  background-image: 
+    radial-gradient(ellipse 120% 80% at 10% 90%, rgba(234, 88, 12, 0.06) 0%, transparent 50%),
+    radial-gradient(ellipse 80% 60% at 90% 10%, rgba(14, 76, 146, 0.06) 0%, transparent 50%);
+  min-height: 100vh;
+}
+
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded-xl px-6 py-3 font-semibold text-white shadow-md transition-all duration-200;
+    background: linear-gradient(135deg, #ea580c 0%, #c2410c 100%);
+  }
+  .btn-primary:hover {
+    @apply shadow-lg scale-[1.02];
+    background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
+  }
+  .btn-primary:disabled {
+    @apply opacity-70 cursor-not-allowed scale-100;
+  }
+  .card-tribal {
+    @apply rounded-2xl border border-sand-300/80 bg-white/90 backdrop-blur-sm shadow-card;
+  }
+  .card-tribal:hover {
+    @apply shadow-card-hover;
+  }
+  .input-tribal {
+    @apply w-full rounded-xl border-2 border-sand-300 bg-white/95 px-4 py-3 text-ocean-900 placeholder-sand-400 focus:border-ember-500 focus:ring-2 focus:ring-ember-500/20 outline-none transition-all;
+  }
 }

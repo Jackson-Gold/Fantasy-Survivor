@@ -2,6 +2,16 @@
 
 Fantasy sports–style game for the reality TV show Survivor: leagues, rosters (2–3 contestants), weekly vote-out predictions, winner pick, trades, and configurable scoring. Invite-only accounts; weekly lock Wednesday 8:00 PM America/New_York.
 
+## Push to GitHub
+
+```bash
+git remote add origin https://github.com/YOUR_USERNAME/fantasy-survivor.git
+git branch -M main
+git push -u origin main
+```
+
+Replace `YOUR_USERNAME` with your GitHub username (or org). If the repo is already created on GitHub with another name, use that repo URL. After pushing, connect the repo to Render for deployment.
+
 ## Hosting (Render)
 
 - **Frontend**: Render **Static Site** (Vite build)
@@ -26,10 +36,11 @@ All production URLs and secrets are **env-driven**; nothing is hardcoded.
 1. Create a new **Web Service** and connect your GitHub repo (`fantasy-survivor`).
 2. **Root directory**: leave empty (monorepo root).
 3. **Build command**:  
-   `npm install && npm run build --workspace=@fantasy-survivor/api`
+   `npm install --include=dev && npm run build --workspace=@fantasy-survivor/api`  
+   (Render sets `NODE_ENV=production`, so `--include=dev` is needed to install TypeScript and type definitions for the build.)
 4. **Start command**:  
-   `npm run db:migrate --workspace=@fantasy-survivor/api && node apps/api/dist/index.js`  
-   (Or use a separate release phase for migrations if you prefer.)
+   `node apps/api/dist/index.js`  
+   (Migrations run automatically on startup.)
 5. **Environment variables** (required):
 
    | Variable         | Description |
@@ -57,7 +68,7 @@ All production URLs and secrets are **env-driven**; nothing is hardcoded.
 1. Create a new **Static Site** and connect the same GitHub repo.
 2. **Root directory**: leave empty.
 3. **Build command**:  
-   `npm install && npm run build --workspace=@fantasy-survivor/web`
+   `npm install --include=dev && npm run build --workspace=@fantasy-survivor/web`
 4. **Publish directory**: `apps/web/dist`
 5. **Environment variable**:
    - `VITE_API_BASE_URL`: Your **backend Web Service URL** (e.g. `https://fantasy-survivor-api.onrender.com`). No trailing slash.
