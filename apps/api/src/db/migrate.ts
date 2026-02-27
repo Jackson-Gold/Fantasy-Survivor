@@ -5,23 +5,59 @@ import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+const MIGRATIONS_TABLE = '_schema_migrations';
+
 export async function runMigrations(): Promise<void> {
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) throw new Error('DATABASE_URL is required');
   const pool = new pg.Pool({ connectionString });
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS "${MIGRATIONS_TABLE}" (
+      name varchar(255) PRIMARY KEY,
+      applied_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+
   const migrationsDir = join(__dirname, '../../drizzle');
   if (!existsSync(migrationsDir)) {
     await pool.end();
     return;
   }
+
   const files = readdirSync(migrationsDir)
     .filter((f) => f.endsWith('.sql'))
     .sort();
+
   for (const file of files) {
+    const { rows } = await pool.query(
+      `SELECT 1 FROM "${MIGRATIONS_TABLE}" WHERE name = $1`,
+      [file]
+    );
+    if (rows.length > 0) {
+      console.log('Skip (already applied):', file);
+      continue;
+    }
+
     const sql = readFileSync(join(migrationsDir, file), 'utf-8');
-    await pool.query(sql);
-    console.log('Applied:', file);
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(sql);
+      await client.query(
+        `INSERT INTO "${MIGRATIONS_TABLE}" (name) VALUES ($1)`,
+        [file]
+      );
+      await client.query('COMMIT');
+      console.log('Applied:', file);
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
   }
+
   await pool.end();
 }
 
