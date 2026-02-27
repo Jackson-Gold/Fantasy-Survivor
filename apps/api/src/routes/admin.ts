@@ -422,7 +422,7 @@ adminRouter.post('/leagues/:leagueId/teams/:userId/add', async (req: Request, re
     res.status(400).json({ error: 'Roster already has 3 contestants' });
     return;
   }
-  const [taken] = await db.select().from(teams).where(and(eq(teams.leagueId, leagueId), eq(teams.contestantId, body.data.contestantId)));
+  const taken = await db.select().from(teams).where(and(eq(teams.leagueId, leagueId), eq(teams.contestantId, body.data.contestantId)));
   if (taken.length > 0) {
     res.status(400).json({ error: 'Contestant already on a roster in this league' });
     return;
