@@ -12,12 +12,18 @@ export async function runMigrations(): Promise<void> {
   if (!connectionString) throw new Error('DATABASE_URL is required');
   const pool = new pg.Pool({ connectionString });
 
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS "${MIGRATIONS_TABLE}" (
-      name varchar(255) PRIMARY KEY,
-      applied_at timestamptz NOT NULL DEFAULT now()
-    )
-  `);
+  const tableExists = await pool.query(
+    `SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = $1`,
+    [MIGRATIONS_TABLE]
+  );
+  if (tableExists.rows.length === 0) {
+    await pool.query(`
+      CREATE TABLE "${MIGRATIONS_TABLE}" (
+        name varchar(255) PRIMARY KEY,
+        applied_at timestamptz NOT NULL DEFAULT now()
+      )
+    `);
+  }
 
   const migrationsDir = join(__dirname, '../../drizzle');
   if (!existsSync(migrationsDir)) {
@@ -45,7 +51,7 @@ export async function runMigrations(): Promise<void> {
       await client.query('BEGIN');
       await client.query(sql);
       await client.query(
-        `INSERT INTO "${MIGRATIONS_TABLE}" (name) VALUES ($1)`,
+        `INSERT INTO "${MIGRATIONS_TABLE}" (name) VALUES ($1) ON CONFLICT (name) DO NOTHING`,
         [file]
       );
       await client.query('COMMIT');
