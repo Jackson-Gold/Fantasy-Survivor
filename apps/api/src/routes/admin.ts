@@ -497,7 +497,7 @@ adminRouter.get('/export/audit-log', async (req: Request, res: Response) => {
     const header = ['id', 'timestamp', 'actor_user_id', 'action_type', 'entity_type', 'entity_id', 'before_json', 'after_json', 'metadata_json'];
     const rows = list.map((e) => [
       e.id,
-      e.timestamp,
+      e.timestamp instanceof Date ? e.timestamp.toISOString() : e.timestamp,
       e.actorUserId,
       e.actionType,
       e.entityType,
@@ -530,7 +530,16 @@ adminRouter.get('/export/ledger', async (req: Request, res: Response) => {
     .limit(5000);
   if (format === 'csv') {
     const header = ['id', 'league_id', 'user_id', 'amount', 'reason', 'reference_type', 'reference_id', 'created_at'];
-    const rows = list.map((e) => [e.id, e.leagueId, e.userId, e.amount, e.reason, e.referenceType, e.referenceId, e.createdAt]);
+    const rows = list.map((e) => [
+      e.id,
+      e.leagueId,
+      e.userId,
+      e.amount,
+      e.reason,
+      e.referenceType,
+      e.referenceId,
+      e.createdAt instanceof Date ? e.createdAt.toISOString() : e.createdAt,
+    ]);
     const csv = [toCsvRow(header), ...rows.map((r) => toCsvRow(r))].join('\n');
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', `attachment; filename=ledger-${leagueId}.csv`);

@@ -137,7 +137,7 @@ function ThisWeekCard({ leagueId, episodes }: { leagueId: number; episodes: Epis
   );
 }
 
-function LeagueCard({ league, onLeave }: { league: League; onLeave: (id: number) => void }) {
+function LeagueCard({ league }: { league: League }) {
   const [confirmLeave, setConfirmLeave] = useState(false);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -264,7 +264,7 @@ export default function Dashboard() {
           <h2 className="text-lg font-semibold text-ocean-800 mb-4">Your leagues</h2>
           <ul className="space-y-4">
             {leagues.map((l) => (
-              <LeagueCard key={l.id} league={l} onLeave={() => {}} />
+              <LeagueCard key={l.id} league={l} />
             ))}
           </ul>
         </>
