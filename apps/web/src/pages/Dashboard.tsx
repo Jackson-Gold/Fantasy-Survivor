@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPost, apiDelete } from '../lib/api';
 import { getNextLockTime } from '../lib/lock';
+import { useCurrentLeague } from '../hooks/useCurrentLeague';
 
 type League = { id: number; name: string; seasonName?: string };
 type RosterItem = { id: number; contestantId: number; name: string; status: string };
@@ -30,6 +31,7 @@ function JoinLeagueCard({ onJoined }: { onJoined: () => void }) {
     mutationFn: (code: string) => apiPost<League>('/leagues/join', { inviteCode: code.trim() }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leagues'] });
+      queryClient.invalidateQueries({ queryKey: ['league-current'] });
       onJoined();
     },
     onError: (err: Error) => setError(err.message),
@@ -137,7 +139,7 @@ function ThisWeekCard({ leagueId, episodes }: { leagueId: number; episodes: Epis
   );
 }
 
-function LeagueCard({ league }: { league: League }) {
+function LeagueCard({ league, hideLeave }: { league: League; hideLeave?: boolean }) {
   const [confirmLeave, setConfirmLeave] = useState(false);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -145,6 +147,7 @@ function LeagueCard({ league }: { league: League }) {
     mutationFn: () => apiDelete(`/leagues/${league.id}/members/me`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leagues'] });
+      queryClient.invalidateQueries({ queryKey: ['league-current'] });
       setConfirmLeave(false);
       navigate('/');
     },
@@ -158,7 +161,7 @@ function LeagueCard({ league }: { league: League }) {
             <span className="font-semibold text-ocean-900">{league.name}</span>
             {league.seasonName && <span className="text-ocean-600 ml-2">— {league.seasonName}</span>}
           </Link>
-          {!confirmLeave ? (
+          {!hideLeave && !confirmLeave ? (
             <button
               type="button"
               onClick={() => setConfirmLeave(true)}
@@ -166,7 +169,7 @@ function LeagueCard({ league }: { league: League }) {
             >
               Leave
             </button>
-          ) : (
+          ) : !hideLeave ? (
             <span className="flex items-center gap-2 shrink-0 text-sm">
               <span className="text-ocean-600">Leave league?</span>
               <button
@@ -180,7 +183,7 @@ function LeagueCard({ league }: { league: League }) {
                 No
               </button>
             </span>
-          )}
+          ) : null}
         </div>
         <div className="flex flex-wrap gap-3 mt-2 ml-0">
           <Link to={`/team/${league.id}`} className="text-ember-600 hover:text-ember-700 font-medium text-sm">
@@ -202,12 +205,8 @@ function LeagueCard({ league }: { league: League }) {
 }
 
 export default function Dashboard() {
-  const { data, isLoading } = useQuery({
-    queryKey: ['leagues'],
-    queryFn: () => apiGet<{ leagues: League[] }>('/leagues'),
-  });
-  const leagues = data?.leagues ?? [];
-  const firstLeague = leagues[0];
+  const { league: currentLeague, isLoading: leagueLoading } = useCurrentLeague();
+  const firstLeague = currentLeague ?? null;
 
   const { data: teamData } = useQuery({
     queryKey: ['teams', firstLeague?.id],
@@ -230,7 +229,7 @@ export default function Dashboard() {
   });
   const episodes = episodesData?.episodes ?? [];
 
-  if (isLoading) {
+  if (leagueLoading) {
     return (
       <div className="py-12 flex items-center justify-center">
         <div className="text-ocean-600">Loading…</div>
@@ -241,9 +240,9 @@ export default function Dashboard() {
   return (
     <div className="py-8">
       <h1 className="font-display text-3xl md:text-4xl tracking-wide text-ocean-900 mb-2">Dashboard</h1>
-      <p className="text-ocean-600 mb-8">Your leagues and this week&apos;s lock countdown.</p>
+      <p className="text-ocean-600 mb-8">Your league and this week&apos;s lock countdown.</p>
 
-      {leagues.length === 0 ? (
+      {!firstLeague ? (
         <div className="grid gap-4 md:grid-cols-2 mb-10">
           <JoinLeagueCard onJoined={() => {}} />
           <div className="card-tribal p-6 flex items-center justify-center text-ocean-600">
@@ -261,11 +260,8 @@ export default function Dashboard() {
             <ThisWeekCard leagueId={firstLeague.id} episodes={episodes} />
           </div>
 
-          <h2 className="text-lg font-semibold text-ocean-800 mb-4">Your leagues</h2>
-          <ul className="space-y-4">
-            {leagues.map((l) => (
-              <LeagueCard key={l.id} league={l} />
-            ))}
+          <ul className="space-y-4 mt-6">
+            <LeagueCard league={firstLeague} hideLeave />
           </ul>
         </>
       )}

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Routes, Route, Link, useLocation, useParams, Navigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiGet, apiPost, apiPatch, apiPut, getApiBaseUrl } from '../lib/api';
+import { apiGet, apiPost, apiPatch, apiPut, apiDelete, getApiBaseUrl } from '../lib/api';
 
 export default function Admin() {
   const location = useLocation();
@@ -107,20 +107,102 @@ export default function Admin() {
 }
 
 function AdminUsers() {
+  const qc = useQueryClient();
   const { data } = useQuery({
     queryKey: ['admin-users'],
     queryFn: () => apiGet<{ users: { id: number; username: string; role: string; mustChangePassword: boolean }[] }>('/admin/users'),
   });
   const users = data?.users ?? [];
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [resetId, setResetId] = useState<number | null>(null);
+  const [newPassword, setNewPassword] = useState('');
+
+  const patchUser = useMutation({
+    mutationFn: ({ id, body }: { id: number; body: { username?: string; role?: string } }) =>
+      apiPatch<{ username: string; role: string }>(`/admin/users/${id}`, body),
+    onSuccess: () => {
+      setEditingId(null);
+      qc.invalidateQueries({ queryKey: ['admin-users'] });
+    },
+  });
+
+  const resetPassword = useMutation({
+    mutationFn: ({ id, password }: { id: number; password: string }) =>
+      apiPost(`/admin/users/${id}/reset-password`, { password }),
+    onSuccess: () => {
+      setResetId(null);
+      setNewPassword('');
+      qc.invalidateQueries({ queryKey: ['admin-users'] });
+    },
+  });
+
   return (
     <div>
       <h2 className="text-lg font-semibold text-ocean-800 mb-2">Users</h2>
-      <ul className="space-y-2">
+      <ul className="space-y-3">
         {users.map((u) => (
-          <li key={u.id} className="flex items-center gap-4">
-            <span>{u.username}</span>
-            <span className="text-ocean-600 text-sm">{u.role}</span>
-            {u.mustChangePassword && <span className="text-amber-600 text-sm">Must change password</span>}
+          <li key={u.id} className="flex flex-wrap items-center gap-3 p-2 rounded-lg bg-sand-50">
+            {editingId === u.id ? (
+              <>
+                <input
+                  type="text"
+                  defaultValue={u.username}
+                  id={`user-username-${u.id}`}
+                  className="input-tribal max-w-[160px]"
+                />
+                <select
+                  defaultValue={u.role}
+                  id={`user-role-${u.id}`}
+                  className="rounded border border-sand-300 px-2 py-1 text-sm"
+                >
+                  <option value="admin">admin</option>
+                  <option value="player">player</option>
+                </select>
+                <button
+                  type="button"
+                  className="btn-primary text-sm py-1"
+                  onClick={() => {
+                    const username = (document.getElementById(`user-username-${u.id}`) as HTMLInputElement)?.value?.trim();
+                    const role = (document.getElementById(`user-role-${u.id}`) as HTMLSelectElement)?.value;
+                    if (username) patchUser.mutate({ id: u.id, body: { username, role: role as 'admin' | 'player' } });
+                  }}
+                  disabled={patchUser.isPending}
+                >
+                  Save
+                </button>
+                <button type="button" onClick={() => setEditingId(null)} className="text-ocean-600 text-sm hover:underline">Cancel</button>
+              </>
+            ) : (
+              <>
+                <span className="font-medium">{u.username}</span>
+                <span className="text-ocean-600 text-sm">{u.role}</span>
+                {u.mustChangePassword && <span className="text-amber-600 text-sm">Must change password</span>}
+                <button type="button" onClick={() => setEditingId(u.id)} className="text-sm text-ember-600 hover:underline">Edit</button>
+              </>
+            )}
+            {resetId === u.id ? (
+              <span className="flex items-center gap-2 ml-2">
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="New password"
+                  className="input-tribal max-w-[140px] text-sm"
+                  minLength={8}
+                />
+                <button
+                  type="button"
+                  className="btn-primary text-sm py-1"
+                  onClick={() => { if (newPassword.length >= 8) resetPassword.mutate({ id: u.id, password: newPassword }); }}
+                  disabled={resetPassword.isPending || newPassword.length < 8}
+                >
+                  Set
+                </button>
+                <button type="button" onClick={() => { setResetId(null); setNewPassword(''); }} className="text-ocean-600 text-sm hover:underline">Cancel</button>
+              </span>
+            ) : (
+              <button type="button" onClick={() => setResetId(u.id)} className="text-sm text-ocean-600 hover:underline">Reset password</button>
+            )}
           </li>
         ))}
       </ul>
@@ -297,6 +379,10 @@ function AdminLeagueDetail() {
       <AdminLeagueContestants leagueId={leagueId} contestants={contestants} />
       <AdminLeagueEpisodes leagueId={leagueId} episodes={episodes} />
       <AdminLeagueOutcomes leagueId={leagueId} episodes={episodes} contestants={contestants} />
+      <AdminLeagueWinnerPicks leagueId={leagueId} contestants={contestants} />
+      <AdminLeagueVotePredictions leagueId={leagueId} episodes={episodes} contestants={contestants} />
+      <AdminLeagueRosters leagueId={leagueId} contestants={contestants} />
+      <AdminLeagueTrades leagueId={leagueId} />
       <AdminLeagueScoringRules leagueId={leagueId} scoringRules={scoringRules} />
       <AdminLeagueExport leagueId={leagueId} />
     </div>
@@ -583,6 +669,358 @@ function AdminLeagueOutcomes({
           {submitting ? 'Submitting…' : 'Submit outcomes'}
         </button>
       </form>
+    </div>
+  );
+}
+
+// ---------- Winner picks (admin) ----------
+type WinnerPickRow = { userId: number; username: string; pick: { contestantId: number; name: string } | null };
+function AdminLeagueWinnerPicks({ leagueId, contestants }: { leagueId: number; contestants: Contestant[] }) {
+  const qc = useQueryClient();
+  const { data } = useQuery({
+    queryKey: ['admin-leagues', leagueId, 'winner-picks'],
+    queryFn: () => apiGet<{ winnerPicks: WinnerPickRow[] }>(`/admin/leagues/${leagueId}/winner-picks`),
+    enabled: leagueId > 0,
+  });
+  const [userId, setUserId] = useState<number | ''>('');
+  const [contestantId, setContestantId] = useState<number | ''>('');
+
+  const putWinnerPick = useMutation({
+    mutationFn: (body: { userId: number; contestantId: number }) =>
+      apiPut(`/admin/leagues/${leagueId}/winner-picks`, body),
+    onSuccess: () => {
+      setUserId('');
+      setContestantId('');
+      qc.invalidateQueries({ queryKey: ['admin-leagues', leagueId, 'winner-picks'] });
+    },
+  });
+
+  const list = data?.winnerPicks ?? [];
+  const memberOptions = list.map((r) => ({ id: r.userId, name: r.username }));
+
+  return (
+    <div className="card-tribal p-4">
+      <h3 className="font-semibold text-ocean-800 mb-3">Winner picks</h3>
+      <table className="w-full text-sm border-collapse mb-4">
+        <thead>
+          <tr className="border-b border-sand-300">
+            <th className="text-left py-2">User</th>
+            <th className="text-left py-2">Current pick</th>
+          </tr>
+        </thead>
+        <tbody>
+          {list.map((row) => (
+            <tr key={row.userId} className="border-b border-sand-200">
+              <td className="py-2">{row.username}</td>
+              <td className="py-2">{row.pick ? row.pick.name : '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <form
+        className="flex flex-wrap gap-3 items-end"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (userId !== '' && contestantId !== '') putWinnerPick.mutate({ userId, contestantId });
+        }}
+      >
+        <div>
+          <label className="block text-xs font-medium text-ocean-700 mb-1">User</label>
+          <select
+            value={userId}
+            onChange={(e) => setUserId(e.target.value === '' ? '' : Number(e.target.value))}
+            className="input-tribal min-w-[120px]"
+          >
+            <option value="">—</option>
+            {memberOptions.map((m) => (
+              <option key={m.id} value={m.id}>{m.name}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-ocean-700 mb-1">Contestant</label>
+          <select
+            value={contestantId}
+            onChange={(e) => setContestantId(e.target.value === '' ? '' : Number(e.target.value))}
+            className="input-tribal min-w-[140px]"
+          >
+            <option value="">—</option>
+            {contestants.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+        </div>
+        <button type="submit" className="btn-primary" disabled={putWinnerPick.isPending || userId === '' || contestantId === ''}>
+          Set pick
+        </button>
+      </form>
+    </div>
+  );
+}
+
+// ---------- Vote predictions (admin) ----------
+const defaultVoteTotal = 10;
+function AdminLeagueVotePredictions({
+  leagueId,
+  episodes,
+  contestants,
+}: {
+  leagueId: number;
+  episodes: Episode[];
+  contestants: Contestant[];
+}) {
+  const qc = useQueryClient();
+  const [episodeId, setEpisodeId] = useState<number | ''>('');
+  const { data: votesData } = useQuery({
+    queryKey: ['admin-leagues', leagueId, 'votes', episodeId],
+    queryFn: () => apiGet<{ votesByUser: { userId: number; username: string; allocations: { contestantId: number; name: string; votes: number }[] }[] }>(
+      `/admin/leagues/${leagueId}/episodes/${episodeId}/votes`
+    ),
+    enabled: leagueId > 0 && episodeId !== '',
+  });
+  const [editUserId, setEditUserId] = useState<number | ''>('');
+  const [allocations, setAllocations] = useState<{ contestantId: number; votes: number }[]>([]);
+
+  const putVotes = useMutation({
+    mutationFn: (body: { userId: number; allocations: { contestantId: number; votes: number }[] }) =>
+      apiPut(`/admin/leagues/${leagueId}/episodes/${Number(episodeId)}/votes`, body),
+    onSuccess: () => {
+      setEditUserId('');
+      qc.invalidateQueries({ queryKey: ['admin-leagues', leagueId, 'votes', episodeId] });
+    },
+  });
+
+  const votesByUser = votesData?.votesByUser ?? [];
+  const startEdit = (userId: number) => {
+    const userRow = votesByUser.find((u) => u.userId === userId);
+    const allocs = userRow?.allocations?.map((a) => ({ contestantId: a.contestantId, votes: a.votes })) ?? [];
+    setEditUserId(userId);
+    if (allocs.length > 0) setAllocations(allocs);
+    else setAllocations(contestants.slice(0, 3).map((c) => ({ contestantId: c.id, votes: 0 })));
+  };
+  const setAlloc = (contestantId: number, votes: number) => {
+    setAllocations((prev) => {
+      const next = prev.filter((a) => a.contestantId !== contestantId);
+      if (votes > 0) next.push({ contestantId, votes });
+      return next;
+    });
+  };
+  const total = allocations.reduce((s, a) => s + a.votes, 0);
+
+  return (
+    <div className="card-tribal p-4">
+      <h3 className="font-semibold text-ocean-800 mb-3">Vote predictions</h3>
+      <div className="mb-3">
+        <label className="block text-sm font-medium text-ocean-700 mb-1">Episode</label>
+        <select
+          value={episodeId}
+          onChange={(e) => { setEpisodeId(e.target.value === '' ? '' : Number(e.target.value)); setEditUserId(''); }}
+          className="input-tribal max-w-xs"
+        >
+          <option value="">—</option>
+          {episodes.map((ep) => (
+            <option key={ep.id} value={ep.id}>Ep {ep.episodeNumber} {ep.title ? `— ${ep.title}` : ''}</option>
+          ))}
+        </select>
+      </div>
+      {episodeId !== '' && (
+        <>
+          <table className="w-full text-sm border-collapse mb-4">
+            <thead>
+              <tr className="border-b border-sand-300">
+                <th className="text-left py-2">User</th>
+                <th className="text-left py-2">Allocations</th>
+                <th className="text-left py-2">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {votesByUser.map((row) => (
+                <tr key={row.userId} className="border-b border-sand-200">
+                  <td className="py-2">{row.username}</td>
+                  <td className="py-2">{row.allocations.map((a) => `${a.name}: ${a.votes}`).join(', ') || '—'}</td>
+                  <td className="py-2">
+                    <button type="button" onClick={() => startEdit(row.userId)} className="text-ember-600 text-sm hover:underline">Edit</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {editUserId !== '' && (
+            <div className="border border-sand-300 rounded-lg p-3 mb-4 bg-sand-50">
+              <p className="text-sm font-medium text-ocean-800 mb-2">Edit allocations (total must be {defaultVoteTotal})</p>
+              <div className="flex flex-wrap gap-4 mb-2">
+                {contestants.map((c) => (
+                  <label key={c.id} className="inline-flex items-center gap-1">
+                    <span className="w-24 truncate">{c.name}</span>
+                    <input
+                      type="number"
+                      min={0}
+                      value={allocations.find((a) => a.contestantId === c.id)?.votes ?? 0}
+                      onChange={(e) => setAlloc(c.id, parseInt(e.target.value, 10) || 0)}
+                      className="input-tribal w-14"
+                    />
+                  </label>
+                ))}
+              </div>
+              <p className={`text-sm mb-2 ${total === defaultVoteTotal ? 'text-jungle-700' : 'text-ember-600'}`}>Total: {total}</p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className="btn-primary"
+                  disabled={total !== defaultVoteTotal || putVotes.isPending}
+                  onClick={() => putVotes.mutate({ userId: editUserId, allocations })}
+                >
+                  Save
+                </button>
+                <button type="button" onClick={() => setEditUserId('')} className="text-ocean-600 text-sm hover:underline">Cancel</button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ---------- Rosters (admin) ----------
+type TeamRow = { userId: number; username: string; roster: { contestantId: number; name: string }[] };
+function AdminLeagueRosters({ leagueId, contestants }: { leagueId: number; contestants: Contestant[] }) {
+  const qc = useQueryClient();
+  const { data } = useQuery({
+    queryKey: ['admin-leagues', leagueId, 'teams'],
+    queryFn: () => apiGet<{ teams: TeamRow[] }>(`/admin/leagues/${leagueId}/teams`),
+    enabled: leagueId > 0,
+  });
+  const [addUserId, setAddUserId] = useState<number | ''>('');
+  const [addContestantId, setAddContestantId] = useState<number | ''>('');
+
+  const addContestant = useMutation({
+    mutationFn: (body: { userId: number; contestantId: number }) =>
+      apiPost(`/admin/leagues/${leagueId}/teams/${body.userId}/add`, { contestantId: body.contestantId }),
+    onSuccess: () => {
+      setAddUserId('');
+      setAddContestantId('');
+      qc.invalidateQueries({ queryKey: ['admin-leagues', leagueId, 'teams'] });
+    },
+  });
+  const removeContestant = useMutation({
+    mutationFn: ({ userId, contestantId }: { userId: number; contestantId: number }) =>
+      apiDelete(`/admin/leagues/${leagueId}/teams/${userId}/contestants/${contestantId}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-leagues', leagueId, 'teams'] }),
+  });
+
+  const teamsList = data?.teams ?? [];
+  const rosterContestantIds = new Set(teamsList.flatMap((t) => t.roster.map((r) => r.contestantId)));
+  const availableContestants = contestants.filter((c) => !rosterContestantIds.has(c.id));
+
+  return (
+    <div className="card-tribal p-4">
+      <h3 className="font-semibold text-ocean-800 mb-3">Rosters</h3>
+      <ul className="space-y-4 mb-4">
+        {teamsList.map((t) => (
+          <li key={t.userId} className="border border-sand-200 rounded-lg p-3">
+            <span className="font-medium text-ocean-800">{t.username}</span>
+            <ul className="flex flex-wrap gap-2 mt-2">
+              {t.roster.map((r) => (
+                <li key={r.contestantId} className="flex items-center gap-1 bg-sand-100 px-2 py-1 rounded text-sm">
+                  {r.name}
+                  <button
+                    type="button"
+                    onClick={() => removeContestant.mutate({ userId: t.userId, contestantId: r.contestantId })}
+                    className="text-ember-600 hover:underline text-xs"
+                    disabled={removeContestant.isPending || t.roster.length <= 2}
+                    title={t.roster.length <= 2 ? 'Min 2 contestants' : 'Remove'}
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <div className="flex gap-2 mt-2 items-center">
+              <select
+                value={addUserId === t.userId ? addContestantId : ''}
+                onChange={(e) => { setAddUserId(t.userId); setAddContestantId(e.target.value === '' ? '' : Number(e.target.value)); }}
+                className="input-tribal text-sm max-w-[140px]"
+              >
+                <option value="">Add contestant…</option>
+                {availableContestants.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+              {addUserId === t.userId && addContestantId !== '' && (
+                <button
+                  type="button"
+                  className="btn-primary text-sm py-1"
+                  disabled={addContestant.isPending || t.roster.length >= 3}
+                  onClick={() => { addContestant.mutate({ userId: t.userId, contestantId: addContestantId }); setAddUserId(''); setAddContestantId(''); }}
+                >
+                  Add
+                </button>
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+// ---------- Trades (admin) ----------
+type TradeItem = { id: number; tradeId: number; side: string; type: string; contestantId: number | null; points: number | null };
+type TradeRow = { id: number; leagueId: number; proposerId: number; acceptorId: number; status: string; items: TradeItem[] };
+function AdminLeagueTrades({ leagueId }: { leagueId: number }) {
+  const qc = useQueryClient();
+  const { data } = useQuery({
+    queryKey: ['admin-leagues', leagueId, 'trades'],
+    queryFn: () => apiGet<{ trades: TradeRow[] }>(`/admin/leagues/${leagueId}/trades`),
+    enabled: leagueId > 0,
+  });
+  const patchTrade = useMutation({
+    mutationFn: ({ id, status }: { id: number; status: string }) => apiPatch(`/admin/trades/${id}`, { status }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-leagues', leagueId, 'trades'] }),
+  });
+
+  const tradesList = data?.trades ?? [];
+  return (
+    <div className="card-tribal p-4">
+      <h3 className="font-semibold text-ocean-800 mb-3">Trades</h3>
+      {tradesList.length === 0 ? (
+        <p className="text-ocean-600 text-sm">No trades.</p>
+      ) : (
+        <table className="w-full text-sm border-collapse">
+          <thead>
+            <tr className="border-b border-sand-300">
+              <th className="text-left py-2">ID</th>
+              <th className="text-left py-2">Proposer / Acceptor</th>
+              <th className="text-left py-2">Status</th>
+              <th className="text-left py-2">Items</th>
+              <th className="text-left py-2">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {tradesList.map((t) => (
+              <tr key={t.id} className="border-b border-sand-200">
+                <td className="py-2">{t.id}</td>
+                <td className="py-2">{t.proposerId} / {t.acceptorId}</td>
+                <td className="py-2">{t.status}</td>
+                <td className="py-2">{t.items.map((i) => `${i.side}: ${i.type}${i.contestantId ?? ''}${i.points ?? ''}`).join(', ')}</td>
+                <td className="py-2">
+                  {(t.status === 'proposed' || t.status === 'pending') && (
+                    <button
+                      type="button"
+                      onClick={() => patchTrade.mutate({ id: t.id, status: 'canceled' })}
+                      className="text-ember-600 text-sm hover:underline"
+                      disabled={patchTrade.isPending}
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }

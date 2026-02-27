@@ -110,6 +110,26 @@ After the frontend is deployed, copy its URL (e.g. `https://fantasy-survivor.onr
 
 ---
 
+## Seed production (one-time)
+
+To populate your **Render Postgres** database with demo data (one league, 3 players, contestants, episodes, scoring rules):
+
+1. **From your machine** (requires network access to Render):
+   - In Render Dashboard, open your PostgreSQL database → **Connect** → copy the **External** database URL.
+   - From the repo root run (replace the URL with your External URL):
+     ```bash
+     cd apps/api && DATABASE_URL="postgresql://user:pass@host/dbname" ALLOW_DEMO_SEED=1 npm run db:seed-demo
+     ```
+   - Render may require your IP to be allowlisted for External access (see database Settings).
+2. **From Render Web Service Shell** (recommended if External access is restricted):
+   - In Render Dashboard, open your Web Service → **Shell** tab.
+   - Run: `ALLOW_DEMO_SEED=1 npm run db:seed-demo` (from the repo root; `DATABASE_URL` is already set by Render).
+   - Run this only once; do not add `ALLOW_DEMO_SEED` to the service’s environment (so production does not re-seed on deploy).
+
+The seed creates a demo league (invite code printed to the console), 3 players (player1/player1, player2/player2, player3/player3), ~10 contestants, 3 episodes, and default scoring rules. The admin user is created separately on first API startup when `ADMIN_SEED_USERNAME` and `ADMIN_SEED_PASSWORD` are set.
+
+---
+
 ## Monorepo
 
 - `apps/api` – Node + Express + TypeScript, Drizzle ORM, Postgres, session auth, RBAC, lock enforcement.

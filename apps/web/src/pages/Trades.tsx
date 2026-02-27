@@ -1,6 +1,7 @@
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, Navigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPost } from '../lib/api';
+import { useCurrentLeague } from '../hooks/useCurrentLeague';
 
 type Trade = {
   id: number;
@@ -15,6 +16,7 @@ export default function Trades() {
   const { leagueId } = useParams<{ leagueId: string }>();
   const qc = useQueryClient();
   const id = parseInt(leagueId ?? '0', 10);
+  const { league: currentLeague, isLoading: leagueLoading } = useCurrentLeague();
 
   const { data, isLoading } = useQuery({
     queryKey: ['trades', id],
@@ -33,6 +35,8 @@ export default function Trades() {
   });
 
   if (!leagueId || id <= 0) return <div className="py-8">Invalid league.</div>;
+  if (leagueLoading) return <div className="py-8">Loading…</div>;
+  if (currentLeague && id !== currentLeague.id) return <Navigate to={`/trades/${currentLeague.id}`} replace />;
   if (isLoading) return <div className="py-8">Loading…</div>;
 
   const trades = data?.trades ?? [];

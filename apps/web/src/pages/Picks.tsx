@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, Navigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPost } from '../lib/api';
+import { useCurrentLeague } from '../hooks/useCurrentLeague';
 
 const VOTE_TOTAL = 10;
 
@@ -9,6 +10,7 @@ export default function Picks() {
   const { leagueId } = useParams<{ leagueId: string }>();
   const qc = useQueryClient();
   const id = parseInt(leagueId ?? '0', 10);
+  const { league: currentLeague, isLoading: leagueLoading } = useCurrentLeague();
 
   const { data: winnerData } = useQuery({
     queryKey: ['winner-pick', id],
@@ -28,6 +30,8 @@ export default function Picks() {
   });
 
   if (!leagueId || id <= 0) return <div className="py-8">Invalid league.</div>;
+  if (leagueLoading) return <div className="py-8">Loading…</div>;
+  if (currentLeague && id !== currentLeague.id) return <Navigate to={`/picks/${currentLeague.id}`} replace />;
 
   return (
     <div className="py-8">

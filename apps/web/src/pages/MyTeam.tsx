@@ -1,6 +1,7 @@
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, Navigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPost, apiDelete } from '../lib/api';
+import { useCurrentLeague } from '../hooks/useCurrentLeague';
 
 type RosterItem = { id: number; contestantId: number; name: string; status: string };
 type Contestant = { id: number; name: string; status: string };
@@ -9,6 +10,7 @@ export default function MyTeam() {
   const { leagueId } = useParams<{ leagueId: string }>();
   const qc = useQueryClient();
   const id = parseInt(leagueId ?? '0', 10);
+  const { league: currentLeague, isLoading: leagueLoading } = useCurrentLeague();
 
   const { data: teamData, isLoading } = useQuery({
     queryKey: ['team', id],
@@ -33,6 +35,8 @@ export default function MyTeam() {
   });
 
   if (!leagueId || id <= 0) return <div className="py-8">Invalid league.</div>;
+  if (leagueLoading) return <div className="py-8">Loading…</div>;
+  if (currentLeague && id !== currentLeague.id) return <Navigate to={`/team/${currentLeague.id}`} replace />;
   if (isLoading || !teamData) return <div className="py-8">Loading…</div>;
 
   const roster = teamData.roster;

@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, Navigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '../lib/api';
+import { useCurrentLeague } from '../hooks/useCurrentLeague';
 
 type Row = { userId: number; username: string; total: number };
 
@@ -16,6 +17,7 @@ export default function Leaderboard() {
   const { leagueId } = useParams<{ leagueId: string }>();
   const id = parseInt(leagueId ?? '0', 10);
   const [tab, setTab] = useState<'overall' | 'category'>('overall');
+  const { league: currentLeague, isLoading: leagueLoading } = useCurrentLeague();
 
   const { data, isLoading } = useQuery({
     queryKey: ['leaderboard', id],
@@ -30,6 +32,8 @@ export default function Leaderboard() {
   });
 
   if (!leagueId || id <= 0) return <div className="py-8">Invalid league.</div>;
+  if (leagueLoading) return <div className="py-8">Loading…</div>;
+  if (currentLeague && id !== currentLeague.id) return <Navigate to={`/leaderboard/${currentLeague.id}`} replace />;
   if (isLoading) return <div className="py-8">Loading…</div>;
 
   const rows = data?.leaderboard ?? [];

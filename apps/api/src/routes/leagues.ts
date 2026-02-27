@@ -30,6 +30,14 @@ leaguesRouter.post('/join', async (req: Request, res: Response) => {
     res.status(403).json({ error: 'You are already in this league' });
     return;
   }
+  const [anyLeague] = await db
+    .select()
+    .from(leagueMembers)
+    .where(eq(leagueMembers.userId, userId));
+  if (anyLeague) {
+    res.status(403).json({ error: 'You can only be in one league' });
+    return;
+  }
   await db.insert(leagueMembers).values({ leagueId: league.id, userId });
   await logAudit({
     actorUserId: userId,
@@ -122,6 +130,26 @@ leaguesRouter.get('/', async (req: Request, res: Response) => {
     .innerJoin(leagueMembers, eq(leagues.id, leagueMembers.leagueId))
     .where(eq(leagueMembers.userId, userId));
   res.json({ leagues: list });
+});
+
+leaguesRouter.get('/current', async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const list = await db
+    .select({
+      id: leagues.id,
+      name: leagues.name,
+      seasonName: leagues.seasonName,
+    })
+    .from(leagues)
+    .innerJoin(leagueMembers, eq(leagues.id, leagueMembers.leagueId))
+    .where(eq(leagueMembers.userId, userId))
+    .orderBy(asc(leagues.id))
+    .limit(1);
+  if (list.length === 0) {
+    res.status(404).json({ error: 'No league' });
+    return;
+  }
+  res.json({ league: list[0] });
 });
 
 leaguesRouter.get('/:id', async (req: Request, res: Response) => {

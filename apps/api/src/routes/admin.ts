@@ -15,6 +15,9 @@ import {
   votePredictions,
   auditLog,
   teams,
+  winnerPicks,
+  trades,
+  tradeItems,
 } from '../db/schema.js';
 import { eq, and, desc } from 'drizzle-orm';
 import { requireAuth, requireAdmin, requireAdminVerified } from '../middleware/auth.js';
@@ -95,6 +98,37 @@ adminRouter.post('/users/:id/reset-password', async (req: Request, res: Response
 adminRouter.get('/users', async (_req: Request, res: Response) => {
   const list = await db.select({ id: users.id, username: users.username, role: users.role, mustChangePassword: users.mustChangePassword }).from(users);
   res.json({ users: list });
+});
+
+const patchUserBody = z.object({ username: z.string().min(1).max(64).optional(), role: z.enum(['admin', 'player']).optional() });
+adminRouter.patch('/users/:id', async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id, 10);
+  const body = patchUserBody.safeParse(req.body);
+  if (Number.isNaN(id) || !body.success) {
+    res.status(400).json({ error: 'Invalid request', details: body.success ? undefined : body.error.flatten() });
+    return;
+  }
+  const [user] = await db.select().from(users).where(eq(users.id, id));
+  if (!user) {
+    res.status(404).json({ error: 'User not found' });
+    return;
+  }
+  const updates: { username?: string; role?: string; updatedAt: Date } = { updatedAt: new Date() };
+  if (body.data.username !== undefined) updates.username = body.data.username;
+  if (body.data.role !== undefined) updates.role = body.data.role;
+  if (Object.keys(updates).length <= 1) {
+    res.json(user);
+    return;
+  }
+  const [updated] = await db.update(users).set(updates).where(eq(users.id, id)).returning();
+  await logAudit({
+    actorUserId: req.user!.id,
+    actionType: 'admin.user.update',
+    entityType: 'user',
+    entityId: id,
+    metadataJson: updates,
+  });
+  res.json(updated);
 });
 
 // ---------- Leagues ----------
@@ -206,6 +240,268 @@ adminRouter.get('/leagues/:id', async (req: Request, res: Response) => {
     return;
   }
   res.json(league);
+});
+
+// ---------- Admin: winner picks (list + set for any user) ----------
+adminRouter.get('/leagues/:leagueId/winner-picks', async (req: Request, res: Response) => {
+  const leagueId = parseInt(req.params.leagueId, 10);
+  if (Number.isNaN(leagueId)) {
+    res.status(400).json({ error: 'Invalid league id' });
+    return;
+  }
+  const members = await db.select({ userId: leagueMembers.userId, username: users.username }).from(leagueMembers).innerJoin(users, eq(leagueMembers.userId, users.id)).where(eq(leagueMembers.leagueId, leagueId));
+  const picks = await db.select({ userId: winnerPicks.userId, contestantId: winnerPicks.contestantId, name: contestants.name }).from(winnerPicks).innerJoin(contestants, eq(winnerPicks.contestantId, contestants.id)).where(eq(winnerPicks.leagueId, leagueId));
+  const pickByUser = new Map(picks.map((p) => [p.userId, { contestantId: p.contestantId, name: p.name }]));
+  const list = members.map((m) => ({ userId: m.userId, username: m.username, pick: pickByUser.get(m.userId) ?? null }));
+  res.json({ winnerPicks: list });
+});
+
+const putWinnerPickBody = z.object({ userId: z.number().int().positive(), contestantId: z.number().int().positive() });
+adminRouter.put('/leagues/:leagueId/winner-picks', async (req: Request, res: Response) => {
+  const leagueId = parseInt(req.params.leagueId, 10);
+  const body = putWinnerPickBody.safeParse(req.body);
+  if (Number.isNaN(leagueId) || !body.success) {
+    res.status(400).json({ error: 'Invalid request', details: body.success ? undefined : body.error.flatten() });
+    return;
+  }
+  const [member] = await db.select().from(leagueMembers).where(and(eq(leagueMembers.leagueId, leagueId), eq(leagueMembers.userId, body.data.userId)));
+  if (!member) {
+    res.status(404).json({ error: 'User not in league' });
+    return;
+  }
+  const [cont] = await db.select().from(contestants).where(and(eq(contestants.id, body.data.contestantId), eq(contestants.leagueId, leagueId)));
+  if (!cont) {
+    res.status(400).json({ error: 'Contestant not in league' });
+    return;
+  }
+  await db.delete(winnerPicks).where(and(eq(winnerPicks.leagueId, leagueId), eq(winnerPicks.userId, body.data.userId)));
+  await db.insert(winnerPicks).values({ leagueId, userId: body.data.userId, contestantId: body.data.contestantId });
+  await logAudit({
+    actorUserId: req.user!.id,
+    actionType: 'admin.winner_pick.set',
+    entityType: 'winner_pick',
+    metadataJson: { leagueId, userId: body.data.userId, contestantId: body.data.contestantId },
+  });
+  res.json({ ok: true });
+});
+
+// ---------- Admin: vote predictions (list + set for any user) ----------
+const defaultVoteTotal = 10;
+adminRouter.get('/leagues/:leagueId/episodes/:episodeId/votes', async (req: Request, res: Response) => {
+  const leagueId = parseInt(req.params.leagueId, 10);
+  const episodeId = parseInt(req.params.episodeId, 10);
+  const userIdParam = req.query.userId ? parseInt(String(req.query.userId), 10) : null;
+  if (Number.isNaN(leagueId) || Number.isNaN(episodeId)) {
+    res.status(400).json({ error: 'Invalid id' });
+    return;
+  }
+  const [ep] = await db.select().from(episodes).where(and(eq(episodes.id, episodeId), eq(episodes.leagueId, leagueId)));
+  if (!ep) {
+    res.status(404).json({ error: 'Episode not found' });
+    return;
+  }
+  const members = await db.select({ userId: leagueMembers.userId, username: users.username }).from(leagueMembers).innerJoin(users, eq(leagueMembers.userId, users.id)).where(eq(leagueMembers.leagueId, leagueId));
+  const predictions = await db
+    .select({ userId: votePredictions.userId, contestantId: votePredictions.contestantId, name: contestants.name, votes: votePredictions.votes })
+    .from(votePredictions)
+    .innerJoin(contestants, eq(votePredictions.contestantId, contestants.id))
+    .where(and(eq(votePredictions.leagueId, leagueId), eq(votePredictions.episodeId, episodeId)));
+  if (userIdParam && !Number.isNaN(userIdParam)) {
+    const userRows = predictions.filter((r) => r.userId === userIdParam);
+    const allocations = userRows.map((r) => ({ contestantId: r.contestantId, name: r.name, votes: r.votes }));
+    res.json({ episodeId, userId: userIdParam, allocations });
+    return;
+  }
+  const byUser = new Map<number, { contestantId: number; name: string; votes: number }[]>();
+  for (const r of predictions) {
+    if (!byUser.has(r.userId)) byUser.set(r.userId, []);
+    byUser.get(r.userId)!.push({ contestantId: r.contestantId, name: r.name, votes: r.votes });
+  }
+  const list = members.map((m) => ({ userId: m.userId, username: m.username, allocations: byUser.get(m.userId) ?? [] }));
+  res.json({ episodeId, votesByUser: list });
+});
+
+const putVotesBody = z.object({
+  userId: z.number().int().positive(),
+  allocations: z.array(z.object({ contestantId: z.number().int().positive(), votes: z.number().int().min(0) })),
+});
+adminRouter.put('/leagues/:leagueId/episodes/:episodeId/votes', async (req: Request, res: Response) => {
+  const leagueId = parseInt(req.params.leagueId, 10);
+  const episodeId = parseInt(req.params.episodeId, 10);
+  const body = putVotesBody.safeParse(req.body);
+  if (Number.isNaN(leagueId) || Number.isNaN(episodeId) || !body.success) {
+    res.status(400).json({ error: 'Invalid request', details: body.success ? undefined : body.error.flatten() });
+    return;
+  }
+  const total = body.data.allocations.reduce((s, a) => s + a.votes, 0);
+  if (total !== defaultVoteTotal) {
+    res.status(400).json({ error: `Total votes must equal ${defaultVoteTotal}` });
+    return;
+  }
+  const [member] = await db.select().from(leagueMembers).where(and(eq(leagueMembers.leagueId, leagueId), eq(leagueMembers.userId, body.data.userId)));
+  if (!member) {
+    res.status(404).json({ error: 'User not in league' });
+    return;
+  }
+  const [ep] = await db.select().from(episodes).where(and(eq(episodes.id, episodeId), eq(episodes.leagueId, leagueId)));
+  if (!ep) {
+    res.status(404).json({ error: 'Episode not found' });
+    return;
+  }
+  for (const a of body.data.allocations) {
+    const [c] = await db.select().from(contestants).where(and(eq(contestants.id, a.contestantId), eq(contestants.leagueId, leagueId)));
+    if (!c) {
+      res.status(400).json({ error: `Contestant ${a.contestantId} not in league` });
+      return;
+    }
+  }
+  await db.delete(votePredictions).where(and(eq(votePredictions.leagueId, leagueId), eq(votePredictions.userId, body.data.userId), eq(votePredictions.episodeId, episodeId)));
+  const now = new Date();
+  for (const a of body.data.allocations) {
+    if (a.votes === 0) continue;
+    await db.insert(votePredictions).values({
+      leagueId,
+      userId: body.data.userId,
+      episodeId,
+      contestantId: a.contestantId,
+      votes: a.votes,
+      updatedAt: now,
+    });
+  }
+  await logAudit({
+    actorUserId: req.user!.id,
+    actionType: 'admin.vote_predictions.set',
+    entityType: 'vote_predictions',
+    metadataJson: { leagueId, episodeId, userId: body.data.userId },
+  });
+  res.json({ ok: true });
+});
+
+// ---------- Admin: rosters (list + add/remove for any user) ----------
+adminRouter.get('/leagues/:leagueId/teams', async (req: Request, res: Response) => {
+  const leagueId = parseInt(req.params.leagueId, 10);
+  if (Number.isNaN(leagueId)) {
+    res.status(400).json({ error: 'Invalid league id' });
+    return;
+  }
+  const members = await db.select({ userId: leagueMembers.userId, username: users.username }).from(leagueMembers).innerJoin(users, eq(leagueMembers.userId, users.id)).where(eq(leagueMembers.leagueId, leagueId));
+  const rosterRows = await db
+    .select({ userId: teams.userId, contestantId: teams.contestantId, name: contestants.name })
+    .from(teams)
+    .innerJoin(contestants, eq(teams.contestantId, contestants.id))
+    .where(eq(teams.leagueId, leagueId));
+  const byUser = new Map<number, { contestantId: number; name: string }[]>();
+  for (const r of rosterRows) {
+    if (!byUser.has(r.userId)) byUser.set(r.userId, []);
+    byUser.get(r.userId)!.push({ contestantId: r.contestantId, name: r.name });
+  }
+  const list = members.map((m) => ({ userId: m.userId, username: m.username, roster: byUser.get(m.userId) ?? [] }));
+  res.json({ teams: list });
+});
+
+adminRouter.post('/leagues/:leagueId/teams/:userId/add', async (req: Request, res: Response) => {
+  const leagueId = parseInt(req.params.leagueId, 10);
+  const targetUserId = parseInt(req.params.userId, 10);
+  const body = z.object({ contestantId: z.number().int().positive() }).safeParse(req.body);
+  if (Number.isNaN(leagueId) || Number.isNaN(targetUserId) || !body.success) {
+    res.status(400).json({ error: 'Invalid request' });
+    return;
+  }
+  const [member] = await db.select().from(leagueMembers).where(and(eq(leagueMembers.leagueId, leagueId), eq(leagueMembers.userId, targetUserId)));
+  if (!member) {
+    res.status(404).json({ error: 'User not in league' });
+    return;
+  }
+  const [cont] = await db.select().from(contestants).where(and(eq(contestants.id, body.data.contestantId), eq(contestants.leagueId, leagueId)));
+  if (!cont) {
+    res.status(400).json({ error: 'Contestant not in league' });
+    return;
+  }
+  const current = await db.select().from(teams).where(and(eq(teams.leagueId, leagueId), eq(teams.userId, targetUserId)));
+  if (current.length >= 3) {
+    res.status(400).json({ error: 'Roster already has 3 contestants' });
+    return;
+  }
+  const [taken] = await db.select().from(teams).where(and(eq(teams.leagueId, leagueId), eq(teams.contestantId, body.data.contestantId)));
+  if (taken.length > 0) {
+    res.status(400).json({ error: 'Contestant already on a roster in this league' });
+    return;
+  }
+  await db.insert(teams).values({ leagueId, userId: targetUserId, contestantId: body.data.contestantId });
+  await logAudit({
+    actorUserId: req.user!.id,
+    actionType: 'admin.roster.add',
+    entityType: 'team',
+    metadataJson: { leagueId, userId: targetUserId, contestantId: body.data.contestantId },
+  });
+  res.status(201).json({ ok: true });
+});
+
+adminRouter.delete('/leagues/:leagueId/teams/:userId/contestants/:contestantId', async (req: Request, res: Response) => {
+  const leagueId = parseInt(req.params.leagueId, 10);
+  const targetUserId = parseInt(req.params.userId, 10);
+  const contestantId = parseInt(req.params.contestantId, 10);
+  if (Number.isNaN(leagueId) || Number.isNaN(targetUserId) || Number.isNaN(contestantId)) {
+    res.status(400).json({ error: 'Invalid request' });
+    return;
+  }
+  const current = await db.select().from(teams).where(and(eq(teams.leagueId, leagueId), eq(teams.userId, targetUserId), eq(teams.contestantId, contestantId)));
+  if (current.length === 0) {
+    res.status(404).json({ error: 'Contestant not on user roster' });
+    return;
+  }
+  const rosterCount = await db.select().from(teams).where(and(eq(teams.leagueId, leagueId), eq(teams.userId, targetUserId)));
+  if (rosterCount.length <= 2) {
+    res.status(400).json({ error: 'Roster must have at least 2 contestants' });
+    return;
+  }
+  await db.delete(teams).where(and(eq(teams.leagueId, leagueId), eq(teams.userId, targetUserId), eq(teams.contestantId, contestantId)));
+  await logAudit({
+    actorUserId: req.user!.id,
+    actionType: 'admin.roster.remove',
+    entityType: 'team',
+    metadataJson: { leagueId, userId: targetUserId, contestantId },
+  });
+  res.json({ ok: true });
+});
+
+// ---------- Admin: trades (list + cancel) ----------
+adminRouter.get('/leagues/:leagueId/trades', async (req: Request, res: Response) => {
+  const leagueId = parseInt(req.params.leagueId, 10);
+  if (Number.isNaN(leagueId)) {
+    res.status(400).json({ error: 'Invalid league id' });
+    return;
+  }
+  const list = await db.select().from(trades).where(eq(trades.leagueId, leagueId)).orderBy(desc(trades.createdAt));
+  const withItems = await Promise.all(list.map(async (t) => {
+    const items = await db.select().from(tradeItems).where(eq(tradeItems.tradeId, t.id));
+    return { ...t, items };
+  }));
+  res.json({ trades: withItems });
+});
+
+adminRouter.patch('/trades/:id', async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id, 10);
+  const body = z.object({ status: z.enum(['canceled', 'proposed', 'pending', 'accepted', 'rejected']).optional() }).safeParse(req.body);
+  if (Number.isNaN(id) || !body.success) {
+    res.status(400).json({ error: 'Invalid request' });
+    return;
+  }
+  const [trade] = await db.select().from(trades).where(eq(trades.id, id));
+  if (!trade) {
+    res.status(404).json({ error: 'Trade not found' });
+    return;
+  }
+  const newStatus = body.data.status ?? trade.status;
+  await db.update(trades).set({ status: newStatus, updatedAt: new Date() }).where(eq(trades.id, id));
+  await logAudit({
+    actorUserId: req.user!.id,
+    actionType: 'admin.trade.cancel',
+    entityType: 'trade',
+    entityId: id,
+    metadataJson: { leagueId: trade.leagueId, previousStatus: trade.status, newStatus },
+  });
+  res.json({ ok: true });
 });
 
 // ---------- Contestants ----------
