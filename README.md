@@ -70,8 +70,10 @@ All production URLs and secrets are **env-driven**; nothing is hardcoded.
 3. **Build command**:  
    `npm install --include=dev && npm run build --workspace=@fantasy-survivor/web`
 4. **Publish directory**: `apps/web/dist`
-5. **Environment variable**:
-   - `VITE_API_BASE_URL`: Your **backend Web Service URL** (e.g. `https://fantasy-survivor-api.onrender.com`). No trailing slash.
+5. **Environment variable** (required for login/API to work):
+   - **Key:** `VITE_API_BASE_URL`  
+   - **Value:** Your backend Web Service URL, e.g. `https://fantasy-survivor-api.onrender.com` (no trailing slash).  
+   After adding or changing this, trigger a **new deploy** (e.g. Manual Deploy → Deploy latest commit) so the build runs with the variable; the value is baked in at build time.
 
 6. Deploy.
 

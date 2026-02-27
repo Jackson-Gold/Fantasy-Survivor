@@ -42,14 +42,16 @@ authRouter.post('/login', async (req: Request, res: Response) => {
     ip: req.ip ?? req.socket.remoteAddress,
     userAgent: req.get('user-agent') ?? undefined,
   });
-  res.json({
+  const payload = {
     user: {
       id: user.id,
       username: user.username,
       role: user.role,
       mustChangePassword: user.mustChangePassword,
     },
-  });
+  };
+  res.setHeader('Content-Type', 'application/json');
+  res.status(200).send(JSON.stringify(payload));
 });
 
 authRouter.post('/logout', requireAuth, (req: Request, res: Response) => {

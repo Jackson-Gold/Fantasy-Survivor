@@ -1,6 +1,7 @@
+import { useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { apiGet } from './lib/api';
+import { apiGet, ensureApiConfig } from './lib/api';
 import Layout from './components/Layout';
 import Landing from './pages/Landing';
 import Login from './pages/Login';
@@ -37,6 +38,10 @@ function AdminOnly({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
+  useEffect(() => {
+    ensureApiConfig();
+  }, []);
+
   return (
     <Routes>
       <Route path="/" element={<Layout />}>

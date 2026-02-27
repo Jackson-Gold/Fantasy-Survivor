@@ -1,7 +1,27 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiPost } from '../lib/api';
+import { apiPost, getApiBaseUrl } from '../lib/api';
+
+function getLoginErrorMessage(apiBase: string): string {
+  if (!apiBase) {
+    return [
+      'The app does not know your API URL, so the request never reached the backend.',
+      '',
+      'Fix: In Render, open your Static Site → Environment. Add:',
+      '  Key: VITE_API_BASE_URL',
+      '  Value: https://your-backend-service.onrender.com (no trailing slash)',
+      'Save, then go to Manual Deploy → Deploy latest commit so the build runs with this variable.',
+      '',
+      'On the backend (Web Service), set CORS_ORIGINS to include this site’s URL (e.g. https://your-static-site.onrender.com).',
+    ].join('\n');
+  }
+  return [
+    'The server returned an empty or invalid response.',
+    'Check that CORS_ORIGINS on the backend includes this site’s URL exactly (e.g. https://your-frontend.onrender.com).',
+    'Also confirm the backend is running and the URL above is correct.',
+  ].join('\n');
+}
 
 export default function Login() {
   const [username, setUsername] = useState('');
@@ -15,7 +35,7 @@ export default function Login() {
       apiPost<{ user?: { mustChangePassword?: boolean } }>('/auth/login', body),
     onSuccess: (data) => {
       if (!data?.user) {
-        setError('Invalid response from server. Check that the API URL is correct and CORS is configured.');
+        setError(getLoginErrorMessage(getApiBaseUrl()));
         return;
       }
       qc.setQueryData(['me'], data);
@@ -46,7 +66,7 @@ export default function Login() {
             }}
           >
             {error && (
-              <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-amber-800 text-sm">
+              <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-amber-800 text-sm whitespace-pre-line">
                 {error}
               </div>
             )}

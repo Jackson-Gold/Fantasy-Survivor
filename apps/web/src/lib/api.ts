@@ -1,8 +1,41 @@
-const BASE = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
+const BUILD_TIME_BASE = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
+
+declare global {
+  interface Window {
+    __FANTASY_API_BASE__?: string;
+  }
+}
+
+/** API base URL: build-time env, or runtime from config.json / window. */
+function getApiBase(): string {
+  if (BUILD_TIME_BASE) return BUILD_TIME_BASE;
+  return (typeof window !== 'undefined' ? (window.__FANTASY_API_BASE__ ?? '') : '').replace(/\/$/, '');
+}
 
 function apiUrl(path: string): string {
+  const base = getApiBase();
   const p = path.startsWith('/') ? path : `/${path}`;
-  return BASE ? `${BASE}${p}` : p;
+  return base ? `${base}${p}` : p;
+}
+
+export function getApiBaseUrl(): string {
+  return getApiBase();
+}
+
+/** Load runtime config from /config.json when build-time API URL is missing. Call before first API use. */
+let configLoaded: Promise<void> | null = null;
+export function ensureApiConfig(): Promise<void> {
+  if (BUILD_TIME_BASE) return Promise.resolve();
+  if (configLoaded) return configLoaded;
+  configLoaded = fetch('/config.json')
+    .then((r) => (r.ok ? r.json() : {}))
+    .then((c: { apiBaseUrl?: string }) => {
+      if (c?.apiBaseUrl?.trim()) {
+        window.__FANTASY_API_BASE__ = c.apiBaseUrl.trim().replace(/\/$/, '');
+      }
+    })
+    .catch(() => {});
+  return configLoaded;
 }
 
 export async function api<T>(path: string, options?: RequestInit): Promise<T> {
