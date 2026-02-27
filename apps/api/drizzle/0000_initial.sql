@@ -1,11 +1,11 @@
--- Fantasy Survivor initial schema
-CREATE TABLE IF NOT EXISTS "session" (
+-- Fantasy Survivor initial schema (table name "user_sessions" to avoid pg_catalog "session" conflict)
+CREATE TABLE IF NOT EXISTS "user_sessions" (
   "sid" varchar NOT NULL COLLATE "default",
   "sess" json NOT NULL,
   "expire" timestamp(6) NOT NULL,
   PRIMARY KEY ("sid")
 );
-CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "session" ("expire");
+CREATE INDEX IF NOT EXISTS "IDX_user_sessions_expire" ON "user_sessions" ("expire");
 
 CREATE TABLE IF NOT EXISTS "users" (
   "id" serial PRIMARY KEY NOT NULL,

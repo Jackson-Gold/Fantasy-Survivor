@@ -34,7 +34,7 @@ export function createApp() {
 
   app.use(
     session({
-      store: new pgSession({ pool, tableName: 'session' }),
+      store: new pgSession({ pool, tableName: 'user_sessions' }),
       secret: process.env.SESSION_SECRET ?? 'dev-secret-change-in-production',
       resave: false,
       saveUninitialized: false,
