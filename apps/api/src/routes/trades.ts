@@ -72,6 +72,12 @@ tradesRouter.post('/propose', async (req: Request, res: Response) => {
   }
   const lockAt = await getNextLockForLeague(leagueId);
   if (lockAt && isLocked(lockAt)) {
+    await logAudit({
+      actorUserId: req.user!.id,
+      actionType: 'attempt_modify_locked',
+      entityType: 'trade',
+      metadataJson: { reason: 'episode_locked', leagueId, operation: 'propose' },
+    });
     res.status(403).json({ error: 'Trades are locked for this week' });
     return;
   }
@@ -169,6 +175,13 @@ tradesRouter.post('/:tradeId/accept', async (req: Request, res: Response) => {
   }
   const lockAt = await getNextLockForLeague(trade.leagueId);
   if (lockAt && isLocked(lockAt)) {
+    await logAudit({
+      actorUserId: req.user!.id,
+      actionType: 'attempt_modify_locked',
+      entityType: 'trade',
+      entityId: trade.id,
+      metadataJson: { reason: 'episode_locked', leagueId: trade.leagueId, operation: 'accept' },
+    });
     res.status(403).json({ error: 'Trades are locked' });
     return;
   }

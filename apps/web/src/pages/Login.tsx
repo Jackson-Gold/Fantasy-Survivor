@@ -42,7 +42,10 @@ export default function Login() {
       if (data.user.mustChangePassword) navigate('/profile?changePassword=1');
       else navigate('/dashboard');
     },
-    onError: (e: Error) => setError(e.message),
+    onError: (e: Error) => {
+      const msg = e.message || 'Request failed';
+      setError(msg.includes('CORS_ORIGINS') ? msg : msg);
+    },
   });
 
   return (

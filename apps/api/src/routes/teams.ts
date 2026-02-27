@@ -81,6 +81,12 @@ teamsRouter.post('/:leagueId/add', async (req: Request, res: Response) => {
   }
   const lockAt = await getCurrentLockForLeague(leagueId);
   if (lockAt && isLocked(lockAt)) {
+    await logAudit({
+      actorUserId: req.user!.id,
+      actionType: 'attempt_modify_locked',
+      entityType: 'team',
+      metadataJson: { reason: 'episode_locked', leagueId, operation: 'add' },
+    });
     res.status(403).json({ error: 'Roster is locked for this week' });
     return;
   }
@@ -136,6 +142,12 @@ teamsRouter.delete('/:leagueId/:contestantId', async (req: Request, res: Respons
   }
   const lockAt = await getCurrentLockForLeague(leagueId);
   if (lockAt && isLocked(lockAt)) {
+    await logAudit({
+      actorUserId: req.user!.id,
+      actionType: 'attempt_modify_locked',
+      entityType: 'team',
+      metadataJson: { reason: 'episode_locked', leagueId, contestantId, operation: 'remove' },
+    });
     res.status(403).json({ error: 'Roster is locked for this week' });
     return;
   }

@@ -106,6 +106,7 @@ After the frontend is deployed, copy its URL (e.g. `https://fantasy-survivor.onr
    Set `VITE_API_BASE_URL` to `http://localhost:3000` in `apps/web/.env` if you’re not using the Vite proxy.  
    With the default Vite config, `/api` is proxied to the backend when `VITE_API_BASE_URL` is unset (dev).
 4. **CORS**: In `apps/api/.env`, set `CORS_ORIGINS=http://localhost:5173`.
+5. **Demo data** (optional): From `apps/api`, run `ALLOW_DEMO_SEED=1 npm run db:seed-demo` to create a demo league (invite code printed), 3 players (player1/player1, player2/player2, player3/player3), ~10 contestants, 3 episodes, and default scoring rules. Do not set `ALLOW_DEMO_SEED` in production.
 
 ---
 

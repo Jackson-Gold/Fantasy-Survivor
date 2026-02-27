@@ -11,6 +11,7 @@ import { teamsRouter } from './routes/teams.js';
 import { predictionsRouter } from './routes/predictions.js';
 import { tradesRouter } from './routes/trades.js';
 import { leaderboardRouter } from './routes/leaderboard.js';
+import { activityRouter } from './routes/activity.js';
 
 const pgSession = connectPgSimple(session);
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 10 });
@@ -61,6 +62,7 @@ export function createApp() {
   app.use('/api/v1/predictions', predictionsRouter);
   app.use('/api/v1/trades', tradesRouter);
   app.use('/api/v1/leaderboard', leaderboardRouter);
+  app.use('/api/v1/activity', activityRouter);
 
   app.get('/api/v1/health', (_req, res) => res.json({ ok: true }));
 

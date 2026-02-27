@@ -78,6 +78,32 @@ authRouter.get('/me', requireAuth, (req: Request, res: Response) => {
   res.json({ user: req.user });
 });
 
+const verifyAdminBody = z.object({ password: z.string().min(1) });
+
+authRouter.post('/verify-admin', requireAuth, async (req: Request, res: Response) => {
+  if (req.user!.role !== 'admin') {
+    res.status(403).json({ error: 'Admin only' });
+    return;
+  }
+  const parsed = verifyAdminBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid body', details: parsed.error.flatten() });
+    return;
+  }
+  const [user] = await db.select().from(users).where(eq(users.id, req.user!.id));
+  if (!user) {
+    res.status(401).json({ error: 'Not authenticated' });
+    return;
+  }
+  const ok = await argon2.verify(user.passwordHash, parsed.data.password);
+  if (!ok) {
+    res.status(401).json({ error: 'Invalid password' });
+    return;
+  }
+  (req.session as unknown as { adminVerifiedAt?: number }).adminVerifiedAt = Date.now();
+  res.json({ ok: true });
+});
+
 const changePasswordBody = z.object({
   currentPassword: z.string().min(1),
   newPassword: z.string().min(8, 'At least 8 characters'),

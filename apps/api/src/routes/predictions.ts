@@ -81,6 +81,12 @@ predictionsRouter.post('/winner/:leagueId', async (req: Request, res: Response) 
   }
   const lockAt = await getNextLockForLeague(leagueId);
   if (lockAt && isLocked(lockAt)) {
+    await logAudit({
+      actorUserId: req.user!.id,
+      actionType: 'attempt_modify_locked',
+      entityType: 'winner_pick',
+      metadataJson: { reason: 'episode_locked', leagueId },
+    });
     res.status(403).json({ error: 'Winner pick is locked' });
     return;
   }
@@ -181,6 +187,13 @@ predictionsRouter.put('/votes/:leagueId/:episodeId', async (req: Request, res: R
     return;
   }
   if (isLocked(ep.lockAt)) {
+    await logAudit({
+      actorUserId: req.user!.id,
+      actionType: 'attempt_modify_locked',
+      entityType: 'vote_predictions',
+      entityId: episodeId,
+      metadataJson: { reason: 'episode_locked', leagueId, episodeId },
+    });
     res.status(403).json({ error: 'Predictions are locked for this episode' });
     return;
   }

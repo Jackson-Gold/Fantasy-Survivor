@@ -67,6 +67,7 @@ export default function Layout() {
           <nav className="md:hidden fixed bottom-0 left-0 right-0 flex justify-around bg-ocean-900 text-white py-3 z-50 border-t border-ocean-800">
             <Link to="/dashboard" className="px-4 py-2 font-medium text-sm">Dashboard</Link>
             <Link to="/profile" className="px-4 py-2 font-medium text-sm">Profile</Link>
+            {isAdmin && <Link to="/admin" className="px-4 py-2 font-medium text-sm text-amber-300">Admin</Link>}
           </nav>
         )}
       </header>

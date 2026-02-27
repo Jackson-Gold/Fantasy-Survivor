@@ -18,8 +18,14 @@ declare global {
   }
 }
 
+type SessionData = {
+  userId?: number;
+  destroy?: (cb: (err?: Error) => void) => void;
+  adminVerifiedAt?: number;
+};
+
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
-  const session = req.session as unknown as { userId?: number; destroy?: (cb: (err?: Error) => void) => void };
+  const session = req.session as unknown as SessionData;
   const uid = session?.userId;
   if (!uid) {
     res.status(401).json({ error: 'Not authenticated' });
@@ -47,6 +53,16 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction) {
   }
   if (req.user.role !== 'admin') {
     res.status(403).json({ error: 'Admin only' });
+    return;
+  }
+  next();
+}
+
+/** Requires requireAuth + requireAdmin first. Returns 403 if admin has not re-entered password this session. */
+export function requireAdminVerified(req: Request, res: Response, next: NextFunction) {
+  const session = req.session as unknown as SessionData;
+  if (!session?.adminVerifiedAt) {
+    res.status(403).json({ error: 'Admin re-authentication required' });
     return;
   }
   next();

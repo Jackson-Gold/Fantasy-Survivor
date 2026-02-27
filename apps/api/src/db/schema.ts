@@ -26,6 +26,7 @@ export const leagues = pgTable('leagues', {
   id: serial('id').primaryKey(),
   name: varchar('name', { length: 256 }).notNull(),
   seasonName: varchar('season_name', { length: 256 }),
+  inviteCode: varchar('invite_code', { length: 32 }).unique(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 

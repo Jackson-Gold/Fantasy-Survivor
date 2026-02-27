@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import argon2 from 'argon2';
+import crypto from 'crypto';
 import { z } from 'zod';
 import { db } from '../db/index.js';
 import {
@@ -16,12 +17,16 @@ import {
   teams,
 } from '../db/schema.js';
 import { eq, and, desc } from 'drizzle-orm';
-import { requireAuth, requireAdmin } from '../middleware/auth.js';
+import { requireAuth, requireAdmin, requireAdminVerified } from '../middleware/auth.js';
+
+function generateInviteCode(): string {
+  return crypto.randomBytes(4).toString('hex').toUpperCase();
+}
 import { getLockTimeForWeek } from '../lib/lock.js';
 import { logAudit } from '../lib/audit.js';
 
 export const adminRouter = Router();
-adminRouter.use(requireAuth, requireAdmin);
+adminRouter.use(requireAuth, requireAdmin, requireAdminVerified);
 
 // ---------- Users ----------
 const createUserBody = z.object({
@@ -99,15 +104,72 @@ adminRouter.post('/leagues', async (req: Request, res: Response) => {
     res.status(400).json({ error: 'Invalid body', details: body.error.flatten() });
     return;
   }
-  const [league] = await db.insert(leagues).values(body.data).returning();
+  let code = generateInviteCode();
+  for (let i = 0; i < 5; i++) {
+    const [existing] = await db.select().from(leagues).where(eq(leagues.inviteCode, code));
+    if (!existing) break;
+    code = generateInviteCode();
+  }
+  const [league] = await db
+    .insert(leagues)
+    .values({ ...body.data, inviteCode: code })
+    .returning();
   await logAudit({
     actorUserId: req.user!.id,
     actionType: 'league.create',
     entityType: 'league',
     entityId: league.id,
-    afterJson: body.data,
+    afterJson: { ...body.data, inviteCode: code },
   });
   res.status(201).json(league);
+});
+
+const patchLeagueBody = z.object({
+  name: z.string().min(1).optional(),
+  seasonName: z.string().optional(),
+  inviteCode: z.string().max(32).optional(),
+  regenerateInviteCode: z.boolean().optional(),
+});
+adminRouter.patch('/leagues/:id', async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id, 10);
+  const body = patchLeagueBody.safeParse(req.body);
+  if (Number.isNaN(id) || !body.success) {
+    res.status(400).json({ error: 'Invalid request', details: body.success ? undefined : body.error.flatten() });
+    return;
+  }
+  const [league] = await db.select().from(leagues).where(eq(leagues.id, id));
+  if (!league) {
+    res.status(404).json({ error: 'League not found' });
+    return;
+  }
+  const updates: { name?: string; seasonName?: string; inviteCode?: string } = {};
+  if (body.data.name !== undefined) updates.name = body.data.name;
+  if (body.data.seasonName !== undefined) updates.seasonName = body.data.seasonName;
+  if (body.data.regenerateInviteCode || body.data.inviteCode !== undefined) {
+    updates.inviteCode = body.data.inviteCode ?? generateInviteCode();
+    if (!body.data.inviteCode) {
+      let code = updates.inviteCode!;
+      for (let i = 0; i < 5; i++) {
+        const [existing] = await db.select().from(leagues).where(eq(leagues.inviteCode, code));
+        if (!existing || existing.id === id) break;
+        code = generateInviteCode();
+        updates.inviteCode = code;
+      }
+    }
+  }
+  if (Object.keys(updates).length === 0) {
+    res.json(league);
+    return;
+  }
+  const [updated] = await db.update(leagues).set(updates).where(eq(leagues.id, id)).returning();
+  await logAudit({
+    actorUserId: req.user!.id,
+    actionType: 'league.update',
+    entityType: 'league',
+    entityId: id,
+    metadataJson: updates,
+  });
+  res.json(updated);
 });
 
 adminRouter.post('/leagues/:id/members', async (req: Request, res: Response) => {
@@ -132,10 +194,24 @@ adminRouter.get('/leagues', async (_req: Request, res: Response) => {
   res.json({ leagues: list });
 });
 
+adminRouter.get('/leagues/:id', async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id, 10);
+  if (Number.isNaN(id)) {
+    res.status(400).json({ error: 'Invalid league id' });
+    return;
+  }
+  const [league] = await db.select().from(leagues).where(eq(leagues.id, id));
+  if (!league) {
+    res.status(404).json({ error: 'League not found' });
+    return;
+  }
+  res.json(league);
+});
+
 // ---------- Contestants ----------
 adminRouter.post('/leagues/:leagueId/contestants', async (req: Request, res: Response) => {
   const leagueId = parseInt(req.params.leagueId, 10);
-  const body = z.object({ name: z.string().min(1), status: z.enum(['active', 'eliminated']).optional(), eliminatedEpisodeId: z.number().optional() }).safeParse(req.body);
+  const body = z.object({ name: z.string().min(1), status: z.enum(['active', 'eliminated', 'injured']).optional(), eliminatedEpisodeId: z.number().optional() }).safeParse(req.body);
   if (Number.isNaN(leagueId) || !body.success) {
     res.status(400).json({ error: 'Invalid request' });
     return;
@@ -171,7 +247,7 @@ adminRouter.get('/leagues/:leagueId/contestants', async (req: Request, res: Resp
 
 adminRouter.patch('/contestants/:id', async (req: Request, res: Response) => {
   const id = parseInt(req.params.id, 10);
-  const body = z.object({ status: z.enum(['active', 'eliminated']).optional(), eliminatedEpisodeId: z.number().optional() }).safeParse(req.body);
+  const body = z.object({ status: z.enum(['active', 'eliminated', 'injured']).optional(), eliminatedEpisodeId: z.number().optional() }).safeParse(req.body);
   if (Number.isNaN(id) || !body.success) {
     res.status(400).json({ error: 'Invalid request' });
     return;
@@ -373,6 +449,21 @@ adminRouter.post('/leagues/:leagueId/episodes/:episodeId/apply-vote-points', asy
   res.json({ ok: true, applied: Object.keys(userIdPoints).length });
 });
 
+adminRouter.post('/leagues/:leagueId/recompute-leaderboard', async (req: Request, res: Response) => {
+  const leagueId = parseInt(req.params.leagueId, 10);
+  if (Number.isNaN(leagueId)) {
+    res.status(400).json({ error: 'Invalid league id' });
+    return;
+  }
+  const [league] = await db.select().from(leagues).where(eq(leagues.id, leagueId));
+  if (!league) {
+    res.status(404).json({ error: 'League not found' });
+    return;
+  }
+  // Leaderboard totals are always derived from ledger_transactions; no recomputation needed.
+  res.json({ ok: true, message: 'Leaderboard is derived from ledger; no recompute needed.' });
+});
+
 // ---------- Audit log & ledger (read-only export) ----------
 adminRouter.get('/audit-log', async (req: Request, res: Response) => {
   const limit = Math.min(parseInt(req.query.limit as string, 10) || 100, 500);
@@ -387,5 +478,64 @@ adminRouter.get('/leagues/:leagueId/ledger', async (req: Request, res: Response)
     return;
   }
   const list = await db.select().from(ledgerTransactions).where(eq(ledgerTransactions.leagueId, leagueId)).orderBy(desc(ledgerTransactions.createdAt)).limit(500);
+  res.json({ ledger: list });
+});
+
+// ---------- Export (CSV/JSON) ----------
+function toCsvRow(values: (string | number | null | undefined)[]): string {
+  return values
+    .map((v) => (v == null ? '' : String(v).replace(/"/g, '""')))
+    .map((s) => (s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s}"` : s))
+    .join(',');
+}
+
+adminRouter.get('/export/audit-log', async (req: Request, res: Response) => {
+  const limit = Math.min(parseInt(req.query.limit as string, 10) || 2000, 5000);
+  const format = (req.query.format as string) || 'json';
+  const list = await db.select().from(auditLog).orderBy(desc(auditLog.timestamp)).limit(limit);
+  if (format === 'csv') {
+    const header = ['id', 'timestamp', 'actor_user_id', 'action_type', 'entity_type', 'entity_id', 'before_json', 'after_json', 'metadata_json'];
+    const rows = list.map((e) => [
+      e.id,
+      e.timestamp,
+      e.actorUserId,
+      e.actionType,
+      e.entityType,
+      e.entityId,
+      e.beforeJson ? JSON.stringify(e.beforeJson) : '',
+      e.afterJson ? JSON.stringify(e.afterJson) : '',
+      e.metadataJson ? JSON.stringify(e.metadataJson) : '',
+    ]);
+    const csv = [toCsvRow(header), ...rows.map((r) => toCsvRow(r))].join('\n');
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename=audit-log.csv');
+    res.send(csv);
+    return;
+  }
+  res.json({ auditLog: list });
+});
+
+adminRouter.get('/export/ledger', async (req: Request, res: Response) => {
+  const leagueId = parseInt(req.query.leagueId as string, 10);
+  if (Number.isNaN(leagueId)) {
+    res.status(400).json({ error: 'leagueId required' });
+    return;
+  }
+  const format = (req.query.format as string) || 'json';
+  const list = await db
+    .select()
+    .from(ledgerTransactions)
+    .where(eq(ledgerTransactions.leagueId, leagueId))
+    .orderBy(desc(ledgerTransactions.createdAt))
+    .limit(5000);
+  if (format === 'csv') {
+    const header = ['id', 'league_id', 'user_id', 'amount', 'reason', 'reference_type', 'reference_id', 'created_at'];
+    const rows = list.map((e) => [e.id, e.leagueId, e.userId, e.amount, e.reason, e.referenceType, e.referenceId, e.createdAt]);
+    const csv = [toCsvRow(header), ...rows.map((r) => toCsvRow(r))].join('\n');
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename=ledger-${leagueId}.csv`);
+    res.send(csv);
+    return;
+  }
   res.json({ ledger: list });
 });
