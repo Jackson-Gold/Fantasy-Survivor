@@ -209,38 +209,33 @@ leaguesRouter.get('/', async (req: Request, res: Response) => {
   res.json({ leagues: list });
 });
 
+// Single-league paradigm: there is one league. Every authenticated user is in it.
+// Return the first league and ensure the user is a member (add if not).
 leaguesRouter.get('/current', async (req: Request, res: Response) => {
   const userId = req.user!.id;
-  let list = await db
-    .select({
-      id: leagues.id,
-      name: leagues.name,
-      seasonName: leagues.seasonName,
-    })
+  const [firstLeague] = await db
+    .select({ id: leagues.id, name: leagues.name, seasonName: leagues.seasonName })
     .from(leagues)
-    .innerJoin(leagueMembers, eq(leagues.id, leagueMembers.leagueId))
-    .where(eq(leagueMembers.userId, userId))
     .orderBy(asc(leagues.id))
     .limit(1);
-  if (list.length === 0) {
-    const allLeagues = await db.select({ id: leagues.id, name: leagues.name, seasonName: leagues.seasonName }).from(leagues).orderBy(asc(leagues.id));
-    if (allLeagues.length === 1) {
-      const league = allLeagues[0];
-      await db.insert(leagueMembers).values({ leagueId: league.id, userId }).onConflictDoNothing();
-      await logAudit({
-        actorUserId: userId,
-        actionType: 'league.member_add',
-        entityType: 'league_members',
-        metadataJson: { leagueId: league.id, autoAdd: true },
-      });
-      list = [league];
-    }
-  }
-  if (list.length === 0) {
+  if (!firstLeague) {
     res.status(404).json({ error: 'No league' });
     return;
   }
-  res.json({ league: list[0] });
+  const [existing] = await db
+    .select()
+    .from(leagueMembers)
+    .where(and(eq(leagueMembers.leagueId, firstLeague.id), eq(leagueMembers.userId, userId)));
+  if (!existing) {
+    await db.insert(leagueMembers).values({ leagueId: firstLeague.id, userId });
+    await logAudit({
+      actorUserId: userId,
+      actionType: 'league.member_add',
+      entityType: 'league_members',
+      metadataJson: { leagueId: firstLeague.id, autoAdd: true },
+    });
+  }
+  res.json({ league: firstLeague });
 });
 
 leaguesRouter.get('/:id', async (req: Request, res: Response) => {

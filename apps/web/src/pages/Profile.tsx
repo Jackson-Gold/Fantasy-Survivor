@@ -122,7 +122,7 @@ export default function Profile() {
       </section>
 
       {!currentLeague ? (
-        <p className="text-ocean-600 text-sm mb-6">You&apos;re not in the league. Contact your admin to be added.</p>
+        <p className="text-ocean-600 text-sm mb-6">No league set up yet. An admin must create a league first.</p>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 mb-6">
           <section className="card-tribal p-4">

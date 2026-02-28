@@ -227,8 +227,8 @@ export default function Dashboard() {
 
       {!firstLeague ? (
         <div className="card-tribal p-6 border-ember-200 bg-ember-50 max-w-2xl mx-auto">
-          <p className="text-ocean-700 font-medium">You&apos;re not in the league yet.</p>
-          <p className="text-ocean-600 text-sm mt-1">Contact your admin to be added as a player.</p>
+          <p className="text-ocean-700 font-medium">No league has been set up yet.</p>
+          <p className="text-ocean-600 text-sm mt-1">An admin needs to create a league first.</p>
         </div>
       ) : (
         <>
