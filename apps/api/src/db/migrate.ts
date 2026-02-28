@@ -10,7 +10,14 @@ const MIGRATIONS_TABLE = '_schema_migrations';
 export async function runMigrations(): Promise<void> {
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) throw new Error('DATABASE_URL is required');
-  const pool = new pg.Pool({ connectionString });
+  const useSsl =
+    process.env.DATABASE_SSL === 'true' ||
+    (process.env.DATABASE_SSL !== 'false' &&
+      !/^postgres(?:ql)?:\/\/(?:[^@]*@)?(?:localhost|127\.0\.0\.1)(?:\/|$)/i.test(connectionString));
+  const pool = new pg.Pool({
+    connectionString,
+    ...(useSsl && { ssl: { rejectUnauthorized: true } }),
+  });
 
   const tableExists = await pool.query(
     `SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = $1`,

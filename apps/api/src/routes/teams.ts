@@ -8,7 +8,7 @@ import {
   episodes,
 } from '../db/schema.js';
 import { eq, and, desc } from 'drizzle-orm';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { isLocked } from '../lib/lock.js';
 import { logAudit } from '../lib/audit.js';
 
@@ -63,7 +63,7 @@ teamsRouter.get('/:leagueId', async (req: Request, res: Response) => {
 });
 
 const addBody = z.object({ contestantId: z.number().int().positive() });
-teamsRouter.post('/:leagueId/add', async (req: Request, res: Response) => {
+teamsRouter.post('/:leagueId/add', requireAdmin, async (req: Request, res: Response) => {
   const leagueId = parseInt(req.params.leagueId, 10);
   if (Number.isNaN(leagueId)) {
     res.status(400).json({ error: 'Invalid league id' });
@@ -128,7 +128,7 @@ teamsRouter.post('/:leagueId/add', async (req: Request, res: Response) => {
   res.status(201).json({ ok: true });
 });
 
-teamsRouter.delete('/:leagueId/:contestantId', async (req: Request, res: Response) => {
+teamsRouter.delete('/:leagueId/:contestantId', requireAdmin, async (req: Request, res: Response) => {
   const leagueId = parseInt(req.params.leagueId, 10);
   const contestantId = parseInt(req.params.contestantId, 10);
   if (Number.isNaN(leagueId) || Number.isNaN(contestantId)) {
