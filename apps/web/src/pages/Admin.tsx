@@ -384,15 +384,27 @@ function AdminLeagueDetail() {
         </div>
       </div>
 
-      <AdminLeagueContestants leagueId={leagueId} contestants={contestants} />
-      <AdminLeagueEpisodes leagueId={leagueId} episodes={episodes} />
-      <AdminLeagueOutcomes leagueId={leagueId} episodes={episodes} contestants={contestants} />
-      <AdminLeagueWinnerPicks leagueId={leagueId} contestants={contestants} />
-      <AdminLeagueVotePredictions leagueId={leagueId} episodes={episodes} contestants={contestants} />
-      <AdminLeagueRosters leagueId={leagueId} contestants={contestants} />
-      <AdminLeagueTrades leagueId={leagueId} />
-      <AdminLeagueScoringRules leagueId={leagueId} scoringRules={scoringRules} />
-      <AdminLeagueExport leagueId={leagueId} />
+      <nav className="flex flex-wrap gap-2 pb-4 border-b border-sand-300 sticky top-0 bg-white/95 z-10 -mx-1 px-1">
+        <a href="#contestants" className="text-sm text-ocean-700 hover:text-ember-600 hover:underline px-2 py-1 rounded">Contestants</a>
+        <a href="#episodes" className="text-sm text-ocean-700 hover:text-ember-600 hover:underline px-2 py-1 rounded">Episodes</a>
+        <a href="#outcomes" className="text-sm text-ocean-700 hover:text-ember-600 hover:underline px-2 py-1 rounded">Outcomes</a>
+        <a href="#winner-picks" className="text-sm text-ocean-700 hover:text-ember-600 hover:underline px-2 py-1 rounded">Picks (Winner)</a>
+        <a href="#vote-predictions" className="text-sm text-ocean-700 hover:text-ember-600 hover:underline px-2 py-1 rounded">Picks (Votes)</a>
+        <a href="#teams" className="text-sm text-ocean-700 hover:text-ember-600 hover:underline px-2 py-1 rounded">Teams</a>
+        <a href="#trades" className="text-sm text-ocean-700 hover:text-ember-600 hover:underline px-2 py-1 rounded">Trades</a>
+        <a href="#scoring" className="text-sm text-ocean-700 hover:text-ember-600 hover:underline px-2 py-1 rounded">Scoring</a>
+        <a href="#export" className="text-sm text-ocean-700 hover:text-ember-600 hover:underline px-2 py-1 rounded">Export</a>
+      </nav>
+
+      <div id="contestants"><AdminLeagueContestants leagueId={leagueId} contestants={contestants} /></div>
+      <div id="episodes"><AdminLeagueEpisodes leagueId={leagueId} episodes={episodes} /></div>
+      <div id="outcomes"><AdminLeagueOutcomes leagueId={leagueId} episodes={episodes} contestants={contestants} /></div>
+      <div id="winner-picks"><AdminLeagueWinnerPicks leagueId={leagueId} contestants={contestants} /></div>
+      <div id="vote-predictions"><AdminLeagueVotePredictions leagueId={leagueId} episodes={episodes} contestants={contestants} /></div>
+      <div id="teams"><AdminLeagueRosters leagueId={leagueId} contestants={contestants} /></div>
+      <div id="trades"><AdminLeagueTrades leagueId={leagueId} /></div>
+      <div id="scoring"><AdminLeagueScoringRules leagueId={leagueId} scoringRules={scoringRules} /></div>
+      <div id="export"><AdminLeagueExport leagueId={leagueId} /></div>
     </div>
   );
 }
@@ -923,7 +935,7 @@ function AdminLeagueRosters({ leagueId, contestants }: { leagueId: number; conte
 
   return (
     <div className="card-tribal p-4">
-      <h3 className="font-semibold text-ocean-800 mb-3">Rosters</h3>
+      <h3 className="font-semibold text-ocean-800 mb-3">Teams</h3>
       <ul className="space-y-4 mb-4">
         {teamsList.map((t) => (
           <li key={t.userId} className="border border-sand-200 rounded-lg p-3">

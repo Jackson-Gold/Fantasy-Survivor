@@ -9,6 +9,7 @@ type RosterItem = { id: number; contestantId: number; name: string; status: stri
 type Episode = { id: number; leagueId: number; episodeNumber: number; title: string | null; airDate: string; lockAt: string };
 type WinnerPick = { id: number; contestantId: number; name: string; pickedAt: string } | null;
 type LeaderboardRow = { userId: number; username: string; total: number };
+type FeedItem = { id: number; timestamp: string; actionType: string; message: string; actorUsername: string | null };
 
 function LockCountdown({ lockAt }: { lockAt: Date }) {
   const now = new Date();
@@ -126,6 +127,13 @@ function LeagueCard({ league }: { league: League }) {
   );
 }
 
+function feedIcon(actionType: string): string {
+  if (actionType.startsWith('trade')) return '🔄';
+  if (actionType.startsWith('scoring')) return '📊';
+  if (actionType.includes('eliminated')) return '🏝';
+  return '•';
+}
+
 export default function Dashboard() {
   const { league: currentLeague, isLoading: leagueLoading, error: leagueError } = useCurrentLeague();
   const firstLeague = currentLeague ?? null;
@@ -158,6 +166,13 @@ export default function Dashboard() {
   });
   const leaderboardRows = leaderboardData?.leaderboard ?? [];
 
+  const { data: feedData, isLoading: feedLoading } = useQuery({
+    queryKey: ['leagues', firstLeague?.id, 'feed'],
+    queryFn: () => apiGet<{ feed: FeedItem[] }>(`/leagues/${firstLeague!.id}/feed`),
+    enabled: !!firstLeague?.id,
+  });
+  const feedItems = feedData?.feed ?? [];
+
   if (leagueLoading) {
     return (
       <div className="py-12 flex items-center justify-center">
@@ -180,17 +195,44 @@ export default function Dashboard() {
 
   return (
     <div className="py-8">
-      <h1 className="font-display text-3xl md:text-4xl tracking-wide text-ocean-900 mb-2">Dashboard</h1>
-      <p className="text-ocean-600 mb-8">Your league and this week&apos;s lock countdown.</p>
+      <section className="text-center mb-10">
+        <h1 className="font-display text-4xl md:text-5xl lg:text-6xl tracking-wide text-ocean-900 mb-3">
+          FANTASY SURVIVOR
+        </h1>
+        <p className="text-lg md:text-xl text-ocean-700 font-medium mb-2">
+          Pick your tribe. Predict the vote. Outwit, outplay, outscore.
+        </p>
+        <p className="text-ocean-600 text-sm max-w-xl mx-auto mb-8">
+          Build a roster, lock in your winner, and earn points as the season unfolds.
+        </p>
+
+        <div className="card-tribal p-6 md:p-8 text-left max-w-2xl mx-auto bg-gradient-to-br from-sand-50 to-white border-ocean-200">
+          <h2 className="text-lg font-semibold text-ocean-900 mb-4">How it works</h2>
+          <ul className="space-y-3 text-ocean-700">
+            <li className="flex items-start gap-3">
+              <span className="flex-shrink-0 w-7 h-7 rounded-full bg-ember-500/20 text-ember-700 flex items-center justify-center text-sm font-semibold">1</span>
+              <span>Build a roster of <strong>2–3 contestants</strong> and lock in your <strong>winner pick</strong>.</span>
+            </li>
+            <li className="flex items-start gap-3">
+              <span className="flex-shrink-0 w-7 h-7 rounded-full bg-jungle-500/20 text-jungle-700 flex items-center justify-center text-sm font-semibold">2</span>
+              <span>Each week, allocate <strong>vote-out predictions</strong> before the deadline (Wednesday 8pm ET).</span>
+            </li>
+            <li className="flex items-start gap-3">
+              <span className="flex-shrink-0 w-7 h-7 rounded-full bg-ocean-500/20 text-ocean-700 flex items-center justify-center text-sm font-semibold">3</span>
+              <span>Earn points from outcomes and trades. Climb the <strong>leaderboard</strong>.</span>
+            </li>
+          </ul>
+        </div>
+      </section>
 
       {!firstLeague ? (
-        <div className="card-tribal p-6 border-ember-200 bg-ember-50">
+        <div className="card-tribal p-6 border-ember-200 bg-ember-50 max-w-2xl mx-auto">
           <p className="text-ocean-700 font-medium">You&apos;re not in the league yet.</p>
           <p className="text-ocean-600 text-sm mt-1">Contact your admin to be added as a player.</p>
         </div>
       ) : (
         <>
-          <div className="grid gap-4 md:grid-cols-2 mb-8">
+          <div className="grid gap-4 md:grid-cols-2 mb-8 max-w-4xl mx-auto">
             <OnboardingCard
               league={firstLeague}
               rosterCount={rosterCount}
@@ -199,11 +241,11 @@ export default function Dashboard() {
             <ThisWeekCard leagueId={firstLeague.id} episodes={episodes} />
           </div>
 
-          <ul className="space-y-4 mt-6">
+          <ul className="space-y-4 mt-6 max-w-4xl mx-auto">
             <LeagueCard league={firstLeague} />
           </ul>
 
-          <section className="mt-8">
+          <section className="mt-10 max-w-4xl mx-auto">
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-display text-xl tracking-wide text-ocean-900">Leaderboard</h2>
               <Link to={`/leaderboard/${firstLeague.id}`} className="text-ember-600 hover:underline text-sm font-medium">
@@ -233,6 +275,33 @@ export default function Dashboard() {
                   </tbody>
                 </table>
               </div>
+            )}
+          </section>
+
+          <section className="mt-10 max-w-4xl mx-auto">
+            <h2 className="font-display text-xl tracking-wide text-ocean-900 mb-4">League feed</h2>
+            <p className="text-ocean-600 text-sm mb-4">Trades, points, and survivor events.</p>
+            {feedLoading ? (
+              <p className="text-ocean-600 text-sm">Loading…</p>
+            ) : feedItems.length === 0 ? (
+              <div className="card-tribal p-6 text-center text-ocean-600">
+                <p className="text-sm">No league activity yet. Trades and scoring will appear here.</p>
+              </div>
+            ) : (
+              <ul className="space-y-2">
+                {feedItems.map((item) => (
+                  <li
+                    key={item.id}
+                    className="card-tribal p-3 flex items-center gap-3 flex-wrap"
+                  >
+                    <span className="text-xl shrink-0" aria-hidden>{feedIcon(item.actionType)}</span>
+                    <span className="text-ocean-800 text-sm flex-1 min-w-0">{item.message}</span>
+                    <span className="text-ocean-500 text-xs shrink-0">
+                      {new Date(item.timestamp).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}
+                    </span>
+                  </li>
+                ))}
+              </ul>
             )}
           </section>
         </>

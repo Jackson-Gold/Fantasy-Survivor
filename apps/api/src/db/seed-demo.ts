@@ -14,6 +14,7 @@ import {
   contestants,
   episodes,
   scoringRules,
+  auditLog,
 } from './schema.js';
 import { eq } from 'drizzle-orm';
 import { getLockTimeForWeek } from '../lib/lock.js';
@@ -134,6 +135,28 @@ async function run(): Promise<void> {
     }
   }
   console.log('Created default scoring rules');
+
+  const contestantList = await db.select({ id: contestants.id, name: contestants.name }).from(contestants).where(eq(contestants.leagueId, league.id));
+  const epList = await db.select({ id: episodes.id, episodeNumber: episodes.episodeNumber }).from(episodes).where(eq(episodes.leagueId, league.id));
+  const baseTime = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  for (let i = 0; i < Math.min(4, contestantList.length); i++) {
+    const c = contestantList[i];
+    const ep = epList[Math.min(i, epList.length - 1)];
+    await db.insert(auditLog).values({
+      timestamp: new Date(baseTime.getTime() + i * 24 * 60 * 60 * 1000),
+      actionType: 'contestant.eliminated',
+      entityType: 'contestant',
+      entityId: c.id,
+      metadataJson: { leagueId: league.id, contestantId: c.id, contestantName: c.name, episodeNumber: ep?.episodeNumber ?? i + 1 },
+    });
+  }
+  await db.insert(auditLog).values({
+    timestamp: new Date(baseTime.getTime() + 2 * 24 * 60 * 60 * 1000),
+    actionType: 'scoring_event.create',
+    entityType: 'scoring_event',
+    afterJson: { leagueId: league.id, episodeId: epList[0]?.id, actionType: 'vote_correct' },
+  });
+  console.log('Seeded league feed events');
 
   console.log('Demo seed done. Invite code:', inviteCode);
 }

@@ -31,11 +31,13 @@ function activitySummary(entry: ActivityEntry): string | null {
 }
 
 type RosterItem = { id: number; contestantId: number; name: string; status: string };
+type Trade = { id: number; status: string; note: string | null };
+type Episode = { id: number; episodeNumber: number; title: string | null; lockAt: string };
 
 export default function Profile() {
   const { data, isLoading: meLoading, error: meError } = useQuery({
     queryKey: ['me'],
-    queryFn: () => apiGet<{ user: { username: string } }>('/auth/me'),
+    queryFn: () => apiGet<{ user: { username: string; role?: string } }>('/auth/me'),
     retry: false,
   });
 
@@ -53,12 +55,34 @@ export default function Profile() {
     enabled: !!currentLeague?.id,
   });
 
+  const { data: winnerData } = useQuery({
+    queryKey: ['predictions', 'winner', currentLeague?.id],
+    queryFn: () => apiGet<{ pick: { name: string } | null }>(`/predictions/winner/${currentLeague!.id}`),
+    enabled: !!currentLeague?.id,
+  });
+
+  const { data: episodesData } = useQuery({
+    queryKey: ['leagues', currentLeague?.id, 'episodes'],
+    queryFn: () => apiGet<{ episodes: Episode[] }>(`/leagues/${currentLeague!.id}/episodes`),
+    enabled: !!currentLeague?.id,
+  });
+
+  const { data: tradesData } = useQuery({
+    queryKey: ['trades', currentLeague?.id],
+    queryFn: () => apiGet<{ trades: Trade[] }>(`/trades/${currentLeague!.id}`),
+    enabled: !!currentLeague?.id,
+  });
+
   const activity = activityData?.activity ?? [];
   const roster = teamData?.roster ?? [];
+  const winnerPick = winnerData?.pick;
+  const episodes = episodesData?.episodes ?? [];
+  const nextEpisode = episodes.find((ep) => new Date(ep.lockAt) > new Date());
+  const trades = tradesData?.trades ?? [];
 
   if (meLoading) {
     return (
-      <div className="py-8 max-w-lg">
+      <div className="py-8 max-w-2xl mx-auto">
         <h1 className="font-display text-3xl tracking-wide text-ocean-900 mb-2">Profile</h1>
         <p className="text-ocean-600">Loading…</p>
       </div>
@@ -67,7 +91,7 @@ export default function Profile() {
 
   if (meError) {
     return (
-      <div className="py-8 max-w-lg">
+      <div className="py-8 max-w-2xl mx-auto">
         <h1 className="font-display text-3xl tracking-wide text-ocean-900 mb-2">Profile</h1>
         <div className="card-tribal p-4 border-ember-200 bg-ember-50">
           <p className="text-ember-700">Session expired or invalid. Please log in again.</p>
@@ -76,34 +100,79 @@ export default function Profile() {
     );
   }
 
-  return (
-    <div className="py-8 max-w-lg">
-      <h1 className="font-display text-3xl tracking-wide text-ocean-900 mb-2">Profile</h1>
-      {data?.user && (
-        <p className="text-ocean-700 mb-6">
-          Logged in as <strong>{data.user.username}</strong>
-        </p>
-      )}
+  const username = data?.user?.username ?? '';
+  const initials = username.slice(0, 2).toUpperCase();
 
-      {currentLeague && (
-        <section className="card-tribal p-4 mb-6">
-          <h2 className="font-semibold text-ocean-800 mb-3">My Team</h2>
-          {roster.length === 0 ? (
-            <p className="text-ocean-600 text-sm mb-3">No roster yet.</p>
-          ) : (
-            <ul className="space-y-1 mb-3">
-              {roster.map((r) => (
-                <li key={r.id} className="text-ocean-800">
-                  {r.name}
-                  {r.status !== 'active' && <span className="text-ocean-600 text-sm"> ({r.status})</span>}
-                </li>
-              ))}
-            </ul>
-          )}
-          <Link to={`/team/${currentLeague.id}`} className="text-ember-600 hover:underline font-medium text-sm">
-            Manage roster →
-          </Link>
-        </section>
+  return (
+    <div className="py-8 max-w-2xl mx-auto">
+      <h1 className="font-display text-3xl tracking-wide text-ocean-900 mb-6">Profile</h1>
+
+      <section className="card-tribal p-5 mb-6">
+        <div className="flex items-center gap-4">
+          <div className="w-14 h-14 rounded-full bg-ocean-700 text-white flex items-center justify-center font-display text-xl tracking-wide shrink-0">
+            {initials}
+          </div>
+          <div>
+            <p className="font-semibold text-ocean-900 text-lg">{username}</p>
+            <span className="inline-block mt-1 px-2 py-0.5 rounded text-xs font-medium bg-ocean-100 text-ocean-800">
+              {data?.user?.role === 'admin' ? 'Admin' : 'Player'}
+            </span>
+          </div>
+        </div>
+      </section>
+
+      {!currentLeague ? (
+        <p className="text-ocean-600 text-sm mb-6">You&apos;re not in the league. Contact your admin to be added.</p>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 mb-6">
+          <section className="card-tribal p-4">
+            <h2 className="font-semibold text-ocean-800 mb-3">My Team</h2>
+            {roster.length === 0 ? (
+              <p className="text-ocean-600 text-sm mb-3">No roster yet.</p>
+            ) : (
+              <ul className="space-y-1 mb-3">
+                {roster.map((r) => (
+                  <li key={r.id} className="text-ocean-800">
+                    {r.name}
+                    {r.status !== 'active' && <span className="text-ocean-600 text-sm"> ({r.status})</span>}
+                  </li>
+                ))}
+              </ul>
+            )}
+            <Link to={`/team/${currentLeague.id}`} className="text-ember-600 hover:underline font-medium text-sm">
+              Manage roster →
+            </Link>
+          </section>
+
+          <section className="card-tribal p-4">
+            <h2 className="font-semibold text-ocean-800 mb-3">Picks</h2>
+            {winnerPick ? (
+              <p className="text-ocean-800 text-sm mb-1">Winner pick: <strong>{winnerPick.name}</strong></p>
+            ) : (
+              <p className="text-ocean-600 text-sm mb-1">No winner pick yet.</p>
+            )}
+            {nextEpisode && (
+              <p className="text-ocean-600 text-xs mb-3">
+                Next lock: Episode {nextEpisode.episodeNumber} — {new Date(nextEpisode.lockAt).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}
+              </p>
+            )}
+            <Link to={`/picks/${currentLeague.id}`} className="text-ember-600 hover:underline font-medium text-sm">
+              Manage picks →
+            </Link>
+          </section>
+
+          <section className="card-tribal p-4 sm:col-span-2">
+            <h2 className="font-semibold text-ocean-800 mb-3">Trades</h2>
+            {trades.length === 0 ? (
+              <p className="text-ocean-600 text-sm mb-3">No trades yet.</p>
+            ) : (
+              <p className="text-ocean-800 text-sm mb-3">{trades.length} trade{trades.length !== 1 ? 's' : ''} in this league.</p>
+            )}
+            <Link to={`/trades/${currentLeague.id}`} className="text-ember-600 hover:underline font-medium text-sm">
+              View trades →
+            </Link>
+          </section>
+        </div>
       )}
 
       <section className="card-tribal p-4">

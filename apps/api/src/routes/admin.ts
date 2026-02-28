@@ -708,6 +708,7 @@ adminRouter.post('/scoring-events', async (req: Request, res: Response) => {
     entityType: 'scoring_event',
     entityId: ev.id,
     afterJson: body.data,
+    metadataJson: { leagueId: body.data.leagueId },
   });
   res.status(201).json(ev);
 });
