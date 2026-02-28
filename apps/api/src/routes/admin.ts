@@ -19,7 +19,7 @@ import {
   trades,
   tradeItems,
 } from '../db/schema.js';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, asc } from 'drizzle-orm';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 
 function generateInviteCode(): string {
@@ -44,14 +44,15 @@ adminRouter.post('/users', async (req: Request, res: Response) => {
     return;
   }
   const hash = await argon2.hash(parsed.data.password);
+  const role = parsed.data.role ?? 'player';
   try {
     const [user] = await db
       .insert(users)
       .values({
         username: parsed.data.username,
         passwordHash: hash,
-        role: parsed.data.role ?? 'player',
-        mustChangePassword: true,
+        role,
+        mustChangePassword: false,
       })
       .returning();
     await logAudit({
@@ -61,6 +62,12 @@ adminRouter.post('/users', async (req: Request, res: Response) => {
       entityId: user.id,
       afterJson: { username: user.username, role: user.role },
     });
+    if (role === 'player') {
+      const [firstLeague] = await db.select().from(leagues).orderBy(asc(leagues.id)).limit(1);
+      if (firstLeague) {
+        await db.insert(leagueMembers).values({ leagueId: firstLeague.id, userId: user.id }).onConflictDoNothing();
+      }
+    }
     res.status(201).json({ user: { id: user.id, username: user.username, role: user.role } });
   } catch (e: unknown) {
     if (e && typeof e === 'object' && 'code' in e && (e as { code: string }).code === '23505') {
@@ -84,7 +91,7 @@ adminRouter.post('/users/:id/reset-password', async (req: Request, res: Response
     return;
   }
   const hash = await argon2.hash(body.data.password);
-  await db.update(users).set({ passwordHash: hash, mustChangePassword: true, updatedAt: new Date() }).where(eq(users.id, id));
+  await db.update(users).set({ passwordHash: hash, mustChangePassword: false, updatedAt: new Date() }).where(eq(users.id, id));
   await logAudit({
     actorUserId: req.user!.id,
     actionType: 'user.password_change',

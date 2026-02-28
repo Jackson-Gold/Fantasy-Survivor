@@ -1,7 +1,6 @@
-import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiGet, apiPost, apiDelete } from '../lib/api';
+import { Link } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { apiGet } from '../lib/api';
 import { getNextLockTime } from '../lib/lock';
 import { useCurrentLeague } from '../hooks/useCurrentLeague';
 
@@ -9,6 +8,7 @@ type League = { id: number; name: string; seasonName?: string };
 type RosterItem = { id: number; contestantId: number; name: string; status: string };
 type Episode = { id: number; leagueId: number; episodeNumber: number; title: string | null; airDate: string; lockAt: string };
 type WinnerPick = { id: number; contestantId: number; name: string; pickedAt: string } | null;
+type LeaderboardRow = { userId: number; username: string; total: number };
 
 function LockCountdown({ lockAt }: { lockAt: Date }) {
   const now = new Date();
@@ -20,48 +20,6 @@ function LockCountdown({ lockAt }: { lockAt: Date }) {
     <span className="font-display text-2xl tracking-wide text-ocean-800">
       {days}d {hours}h
     </span>
-  );
-}
-
-function JoinLeagueCard({ onJoined }: { onJoined: () => void }) {
-  const [inviteCode, setInviteCode] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const queryClient = useQueryClient();
-  const join = useMutation({
-    mutationFn: (code: string) => apiPost<League>('/leagues/join', { inviteCode: code.trim() }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['leagues'] });
-      queryClient.invalidateQueries({ queryKey: ['league-current'] });
-      onJoined();
-    },
-    onError: (err: Error) => setError(err.message),
-  });
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    if (!inviteCode.trim()) return;
-    join.mutate(inviteCode.trim());
-  };
-  return (
-    <div className="card-tribal p-6 bg-gradient-to-br from-jungle-800 to-jungle-900 text-white border-0">
-      <h2 className="font-display text-xl tracking-wide text-white mb-2">Join a league</h2>
-      <p className="text-white/80 text-sm mb-4">Enter an invite code from your league host.</p>
-      <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-3">
-        <input
-          type="text"
-          value={inviteCode}
-          onChange={(e) => setInviteCode(e.target.value)}
-          placeholder="Invite code"
-          className="input-tribal flex-1 min-w-0"
-          maxLength={32}
-          autoCapitalize="characters"
-        />
-        <button type="submit" className="btn-primary shrink-0" disabled={join.isPending}>
-          {join.isPending ? 'Joining…' : 'Join'}
-        </button>
-      </form>
-      {error && <p className="text-ember-200 text-sm mt-2">{error}</p>}
-    </div>
   );
 }
 
@@ -139,20 +97,7 @@ function ThisWeekCard({ leagueId, episodes }: { leagueId: number; episodes: Epis
   );
 }
 
-function LeagueCard({ league, hideLeave }: { league: League; hideLeave?: boolean }) {
-  const [confirmLeave, setConfirmLeave] = useState(false);
-  const queryClient = useQueryClient();
-  const navigate = useNavigate();
-  const leave = useMutation({
-    mutationFn: () => apiDelete(`/leagues/${league.id}/members/me`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['leagues'] });
-      queryClient.invalidateQueries({ queryKey: ['league-current'] });
-      setConfirmLeave(false);
-      navigate('/');
-    },
-    onError: () => setConfirmLeave(false),
-  });
+function LeagueCard({ league }: { league: League }) {
   return (
     <li>
       <div className="card-tribal p-5 block">
@@ -161,29 +106,6 @@ function LeagueCard({ league, hideLeave }: { league: League; hideLeave?: boolean
             <span className="font-semibold text-ocean-900">{league.name}</span>
             {league.seasonName && <span className="text-ocean-600 ml-2">— {league.seasonName}</span>}
           </Link>
-          {!hideLeave && !confirmLeave ? (
-            <button
-              type="button"
-              onClick={() => setConfirmLeave(true)}
-              className="text-ocean-500 hover:text-ember-600 text-sm shrink-0"
-            >
-              Leave
-            </button>
-          ) : !hideLeave ? (
-            <span className="flex items-center gap-2 shrink-0 text-sm">
-              <span className="text-ocean-600">Leave league?</span>
-              <button
-                type="button"
-                onClick={() => leave.mutate()}
-                className="text-ember-600 hover:text-ember-700 font-medium"
-              >
-                Yes
-              </button>
-              <button type="button" onClick={() => setConfirmLeave(false)} className="text-ocean-600 hover:underline">
-                No
-              </button>
-            </span>
-          ) : null}
         </div>
         <div className="flex flex-wrap gap-3 mt-2 ml-0">
           <Link to={`/team/${league.id}`} className="text-ember-600 hover:text-ember-700 font-medium text-sm">
@@ -205,14 +127,8 @@ function LeagueCard({ league, hideLeave }: { league: League; hideLeave?: boolean
 }
 
 export default function Dashboard() {
-  const { data: meData } = useQuery({
-    queryKey: ['me'],
-    queryFn: () => apiGet<{ user: { mustChangePassword?: boolean } }>('/auth/me'),
-    retry: false,
-  });
   const { league: currentLeague, isLoading: leagueLoading, error: leagueError } = useCurrentLeague();
   const firstLeague = currentLeague ?? null;
-  const mustChangePassword = meData?.user?.mustChangePassword;
 
   const { data: teamData } = useQuery({
     queryKey: ['teams', firstLeague?.id],
@@ -234,6 +150,13 @@ export default function Dashboard() {
     enabled: !!firstLeague?.id,
   });
   const episodes = episodesData?.episodes ?? [];
+
+  const { data: leaderboardData, isLoading: leaderboardLoading } = useQuery({
+    queryKey: ['leaderboard', firstLeague?.id],
+    queryFn: () => apiGet<{ leaderboard: LeaderboardRow[] }>(`/leaderboard/${firstLeague!.id}`),
+    enabled: !!firstLeague?.id,
+  });
+  const leaderboardRows = leaderboardData?.leaderboard ?? [];
 
   if (leagueLoading) {
     return (
@@ -260,21 +183,10 @@ export default function Dashboard() {
       <h1 className="font-display text-3xl md:text-4xl tracking-wide text-ocean-900 mb-2">Dashboard</h1>
       <p className="text-ocean-600 mb-8">Your league and this week&apos;s lock countdown.</p>
 
-      {mustChangePassword && (
-        <div className="card-tribal p-4 mb-6 bg-amber-50 border-amber-200">
-          <p className="text-amber-800 font-medium">Please set a new password.</p>
-          <Link to="/profile?changePassword=1" className="text-ember-600 font-medium text-sm mt-1 inline-block hover:underline">
-            Go to Profile →
-          </Link>
-        </div>
-      )}
-
       {!firstLeague ? (
-        <div className="grid gap-4 md:grid-cols-2 mb-10">
-          <JoinLeagueCard onJoined={() => {}} />
-          <div className="card-tribal p-6 flex items-center justify-center text-ocean-600">
-            <p className="text-sm">No upcoming episode until you join a league.</p>
-          </div>
+        <div className="card-tribal p-6 border-ember-200 bg-ember-50">
+          <p className="text-ocean-700 font-medium">You&apos;re not in the league yet.</p>
+          <p className="text-ocean-600 text-sm mt-1">Contact your admin to be added as a player.</p>
         </div>
       ) : (
         <>
@@ -288,8 +200,41 @@ export default function Dashboard() {
           </div>
 
           <ul className="space-y-4 mt-6">
-            <LeagueCard league={firstLeague} hideLeave />
+            <LeagueCard league={firstLeague} />
           </ul>
+
+          <section className="mt-8">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-display text-xl tracking-wide text-ocean-900">Leaderboard</h2>
+              <Link to={`/leaderboard/${firstLeague.id}`} className="text-ember-600 hover:underline text-sm font-medium">
+                View full leaderboard →
+              </Link>
+            </div>
+            {leaderboardLoading ? (
+              <p className="text-ocean-600 text-sm">Loading…</p>
+            ) : (
+              <div className="card-tribal overflow-hidden">
+                <table className="w-full">
+                  <thead className="bg-ocean-800 text-white">
+                    <tr>
+                      <th className="text-left p-3">#</th>
+                      <th className="text-left p-3">Player</th>
+                      <th className="text-right p-3">Points</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {leaderboardRows.map((r, i) => (
+                      <tr key={r.userId} className="border-t border-sand-200">
+                        <td className="p-3">{i + 1}</td>
+                        <td className="p-3 font-medium">{r.username}</td>
+                        <td className="p-3 text-right">{Number(r.total).toFixed(0)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
         </>
       )}
     </div>

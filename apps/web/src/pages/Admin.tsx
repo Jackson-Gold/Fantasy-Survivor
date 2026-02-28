@@ -105,6 +105,7 @@ function AdminUsers() {
   return (
     <div>
       <h2 className="text-lg font-semibold text-ocean-800 mb-2">Users</h2>
+      <p className="text-ocean-600 text-sm mb-4">All user logins (usernames) and passwords are set here. Passwords are set when you add a player and can only be changed via Reset password below.</p>
       <div className="card-tribal p-4 mb-6">
         <h3 className="text-sm font-medium text-ocean-800 mb-2">Add player</h3>
         <form
@@ -133,7 +134,7 @@ function AdminUsers() {
               value={newUserPassword}
               onChange={(e) => setNewUserPassword(e.target.value)}
               className="input-tribal max-w-[160px]"
-              placeholder="Temporary password"
+              placeholder="Password"
               minLength={8}
             />
           </div>
@@ -182,9 +183,8 @@ function AdminUsers() {
               </>
             ) : (
               <>
-                <span className="font-medium">{u.username}</span>
+                <span className="font-medium" title="Login">{u.username}</span>
                 <span className="text-ocean-600 text-sm">{u.role}</span>
-                {u.mustChangePassword && <span className="text-amber-600 text-sm">Must change password</span>}
                 <button type="button" onClick={() => setEditingId(u.id)} className="text-sm text-ember-600 hover:underline">Edit</button>
               </>
             )}

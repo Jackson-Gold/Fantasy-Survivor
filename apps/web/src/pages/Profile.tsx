@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiGet, apiPost } from '../lib/api';
+import { Link } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { apiGet } from '../lib/api';
+import { useCurrentLeague } from '../hooks/useCurrentLeague';
 
 type ActivityEntry = {
   id: number;
@@ -30,19 +30,16 @@ function activitySummary(entry: ActivityEntry): string | null {
   return null;
 }
 
-export default function Profile() {
-  const [searchParams] = useSearchParams();
-  const forceChange = searchParams.get('changePassword') === '1';
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [message, setMessage] = useState('');
-  const qc = useQueryClient();
+type RosterItem = { id: number; contestantId: number; name: string; status: string };
 
+export default function Profile() {
   const { data, isLoading: meLoading, error: meError } = useQuery({
     queryKey: ['me'],
-    queryFn: () => apiGet<{ user: { username: string; mustChangePassword: boolean } }>('/auth/me'),
+    queryFn: () => apiGet<{ user: { username: string } }>('/auth/me'),
     retry: false,
   });
+
+  const { league: currentLeague } = useCurrentLeague();
 
   const { data: activityData, isLoading: activityLoading } = useQuery({
     queryKey: ['activity'],
@@ -50,24 +47,14 @@ export default function Profile() {
     retry: false,
   });
 
-  const changeMut = useMutation({
-    mutationFn: (body: { currentPassword: string; newPassword: string }) =>
-      apiPost('/auth/change-password', body),
-    onSuccess: () => {
-      setMessage('Password updated.');
-      setCurrentPassword('');
-      setNewPassword('');
-      qc.invalidateQueries({ queryKey: ['me'] });
-      qc.invalidateQueries({ queryKey: ['activity'] });
-    },
-    onError: (e: Error) => setMessage(e.message),
+  const { data: teamData } = useQuery({
+    queryKey: ['teams', currentLeague?.id],
+    queryFn: () => apiGet<{ roster: RosterItem[] }>(`/teams/${currentLeague!.id}`),
+    enabled: !!currentLeague?.id,
   });
 
-  useEffect(() => {
-    if (forceChange) setMessage('Please set a new password.');
-  }, [forceChange]);
-
   const activity = activityData?.activity ?? [];
+  const roster = teamData?.roster ?? [];
 
   if (meLoading) {
     return (
@@ -98,48 +85,26 @@ export default function Profile() {
         </p>
       )}
 
-      <section className="card-tribal p-4 mb-6">
-        <h2 className="font-semibold text-ocean-800 mb-3">Change password</h2>
-        {message && (
-          <p className={`text-sm mb-2 ${message.startsWith('Password') ? 'text-jungle-700' : 'text-ember-600'}`}>
-            {message}
-          </p>
-        )}
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            changeMut.mutate({ currentPassword, newPassword });
-          }}
-          className="space-y-3"
-        >
-          <div>
-            <label className="block text-sm font-medium text-ocean-800 mb-1">Current password</label>
-            <input
-              type="password"
-              value={currentPassword}
-              onChange={(e) => setCurrentPassword(e.target.value)}
-              className="input-tribal"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-ocean-800 mb-1">New password (min 8 characters)</label>
-            <input
-              type="password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              className="input-tribal"
-              minLength={8}
-            />
-          </div>
-          <button
-            type="submit"
-            className="btn-primary"
-            disabled={changeMut.isPending}
-          >
-            Update password
-          </button>
-        </form>
-      </section>
+      {currentLeague && (
+        <section className="card-tribal p-4 mb-6">
+          <h2 className="font-semibold text-ocean-800 mb-3">My Team</h2>
+          {roster.length === 0 ? (
+            <p className="text-ocean-600 text-sm mb-3">No roster yet.</p>
+          ) : (
+            <ul className="space-y-1 mb-3">
+              {roster.map((r) => (
+                <li key={r.id} className="text-ocean-800">
+                  {r.name}
+                  {r.status !== 'active' && <span className="text-ocean-600 text-sm"> ({r.status})</span>}
+                </li>
+              ))}
+            </ul>
+          )}
+          <Link to={`/team/${currentLeague.id}`} className="text-ember-600 hover:underline font-medium text-sm">
+            Manage roster →
+          </Link>
+        </section>
+      )}
 
       <section className="card-tribal p-4">
         <h2 className="font-semibold text-ocean-800 mb-3">Recent activity</h2>
