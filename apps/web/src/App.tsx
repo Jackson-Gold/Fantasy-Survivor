@@ -27,7 +27,6 @@ function Protected({ children }: { children: React.ReactNode }) {
   const { data, isLoading } = useUser();
   if (isLoading) return <div className="flex min-h-screen items-center justify-center">Loading...</div>;
   if (!data?.user) return <Navigate to="/login" replace />;
-  if (data.user.mustChangePassword) return <Navigate to="/profile?changePassword=1" replace />;
   return <>{children}</>;
 }
 

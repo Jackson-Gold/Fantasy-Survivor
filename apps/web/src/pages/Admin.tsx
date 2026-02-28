@@ -70,6 +70,18 @@ function AdminUsers() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [resetId, setResetId] = useState<number | null>(null);
   const [newPassword, setNewPassword] = useState('');
+  const [newUsername, setNewUsername] = useState('');
+  const [newUserPassword, setNewUserPassword] = useState('');
+
+  const createUser = useMutation({
+    mutationFn: (body: { username: string; password: string; role: 'admin' | 'player' }) =>
+      apiPost<{ user: { id: number; username: string; role: string } }>('/admin/users', body),
+    onSuccess: () => {
+      setNewUsername('');
+      setNewUserPassword('');
+      qc.invalidateQueries({ queryKey: ['admin-users'] });
+    },
+  });
 
   const patchUser = useMutation({
     mutationFn: ({ id, body }: { id: number; body: { username?: string; role?: string } }) =>
@@ -93,6 +105,48 @@ function AdminUsers() {
   return (
     <div>
       <h2 className="text-lg font-semibold text-ocean-800 mb-2">Users</h2>
+      <div className="card-tribal p-4 mb-6">
+        <h3 className="text-sm font-medium text-ocean-800 mb-2">Add player</h3>
+        <form
+          className="flex flex-wrap gap-3 items-end"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (newUsername.trim() && newUserPassword.length >= 8) {
+              createUser.mutate({ username: newUsername.trim(), password: newUserPassword, role: 'player' });
+            }
+          }}
+        >
+          <div>
+            <label className="block text-xs font-medium text-ocean-700 mb-1">Username</label>
+            <input
+              type="text"
+              value={newUsername}
+              onChange={(e) => setNewUsername(e.target.value)}
+              className="input-tribal max-w-[160px]"
+              placeholder="Username"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-ocean-700 mb-1">Password (min 8)</label>
+            <input
+              type="password"
+              value={newUserPassword}
+              onChange={(e) => setNewUserPassword(e.target.value)}
+              className="input-tribal max-w-[160px]"
+              placeholder="Temporary password"
+              minLength={8}
+            />
+          </div>
+          <button
+            type="submit"
+            className="btn-primary"
+            disabled={createUser.isPending || !newUsername.trim() || newUserPassword.length < 8}
+          >
+            {createUser.isPending ? 'Adding…' : 'Add player'}
+          </button>
+        </form>
+        {createUser.isError && <p className="text-ember-600 text-sm mt-2">{createUser.error.message}</p>}
+      </div>
       <ul className="space-y-3">
         {users.map((u) => (
           <li key={u.id} className="flex flex-wrap items-center gap-3 p-2 rounded-lg bg-sand-50">

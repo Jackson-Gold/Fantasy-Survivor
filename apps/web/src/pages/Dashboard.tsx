@@ -205,8 +205,14 @@ function LeagueCard({ league, hideLeave }: { league: League; hideLeave?: boolean
 }
 
 export default function Dashboard() {
+  const { data: meData } = useQuery({
+    queryKey: ['me'],
+    queryFn: () => apiGet<{ user: { mustChangePassword?: boolean } }>('/auth/me'),
+    retry: false,
+  });
   const { league: currentLeague, isLoading: leagueLoading, error: leagueError } = useCurrentLeague();
   const firstLeague = currentLeague ?? null;
+  const mustChangePassword = meData?.user?.mustChangePassword;
 
   const { data: teamData } = useQuery({
     queryKey: ['teams', firstLeague?.id],
@@ -253,6 +259,15 @@ export default function Dashboard() {
     <div className="py-8">
       <h1 className="font-display text-3xl md:text-4xl tracking-wide text-ocean-900 mb-2">Dashboard</h1>
       <p className="text-ocean-600 mb-8">Your league and this week&apos;s lock countdown.</p>
+
+      {mustChangePassword && (
+        <div className="card-tribal p-4 mb-6 bg-amber-50 border-amber-200">
+          <p className="text-amber-800 font-medium">Please set a new password.</p>
+          <Link to="/profile?changePassword=1" className="text-ember-600 font-medium text-sm mt-1 inline-block hover:underline">
+            Go to Profile →
+          </Link>
+        </div>
+      )}
 
       {!firstLeague ? (
         <div className="grid gap-4 md:grid-cols-2 mb-10">
