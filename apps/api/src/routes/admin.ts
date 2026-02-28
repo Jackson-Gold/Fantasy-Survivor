@@ -20,7 +20,7 @@ import {
   tradeItems,
 } from '../db/schema.js';
 import { eq, and, desc } from 'drizzle-orm';
-import { requireAuth, requireAdmin, requireAdminVerified } from '../middleware/auth.js';
+import { requireAuth, requireAdmin } from '../middleware/auth.js';
 
 function generateInviteCode(): string {
   return crypto.randomBytes(4).toString('hex').toUpperCase();
@@ -29,7 +29,7 @@ import { getLockTimeForWeek } from '../lib/lock.js';
 import { logAudit } from '../lib/audit.js';
 
 export const adminRouter = Router();
-adminRouter.use(requireAuth, requireAdmin, requireAdminVerified);
+adminRouter.use(requireAuth, requireAdmin);
 
 // ---------- Users ----------
 const createUserBody = z.object({

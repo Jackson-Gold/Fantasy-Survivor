@@ -1,5 +1,22 @@
 const BUILD_TIME_BASE = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
 
+const AUTH_TOKEN_KEY = 'fantasy_survivor_token';
+
+export function getToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem(AUTH_TOKEN_KEY);
+}
+
+export function setToken(token: string): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(AUTH_TOKEN_KEY, token);
+}
+
+export function clearToken(): void {
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem(AUTH_TOKEN_KEY);
+}
+
 declare global {
   interface Window {
     __FANTASY_API_BASE__?: string;
@@ -41,15 +58,20 @@ export function ensureApiConfig(): Promise<void> {
 export async function api<T>(path: string, options?: RequestInit): Promise<T> {
   const fullPath = path.startsWith('/api') ? path : `/api/v1${path.startsWith('/') ? path : `/${path}`}`;
   const url = path.startsWith('http') ? path : apiUrl(fullPath);
+  const token = getToken();
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(options?.headers as Record<string, string>),
+  };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
   const res = await fetch(url, {
     ...options,
-    credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      ...options?.headers,
-    },
+    headers,
   });
   const text = await res.text();
+  if (res.status === 401) {
+    clearToken();
+  }
   if (!res.ok) {
     let err: { error?: string } = { error: res.statusText };
     if (text && text.trim()) {

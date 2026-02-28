@@ -1,6 +1,6 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
-import { apiGet } from '../lib/api';
+import { apiGet, clearToken } from '../lib/api';
 import { useCurrentLeague } from '../hooks/useCurrentLeague';
 
 type User = { id: number; username: string; role: string };
@@ -76,9 +76,8 @@ export default function Layout() {
             )}
             {user ? (
               <button
-                onClick={async () => {
-                  const base = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
-                  await fetch(base ? `${base}/api/v1/auth/logout` : '/api/v1/auth/logout', { method: 'POST', credentials: 'include' });
+                onClick={() => {
+                  clearToken();
                   qc.clear();
                   window.location.href = '/';
                 }}

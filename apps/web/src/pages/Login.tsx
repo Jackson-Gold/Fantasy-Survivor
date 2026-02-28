@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiPost, getApiBaseUrl } from '../lib/api';
+import { apiPost, getApiBaseUrl, setToken } from '../lib/api';
 
 function getLoginErrorMessage(apiBase: string): string {
   if (!apiBase) {
@@ -32,13 +32,14 @@ export default function Login() {
 
   const login = useMutation({
     mutationFn: (body: { username: string; password: string }) =>
-      apiPost<{ user?: { mustChangePassword?: boolean } }>('/auth/login', body),
+      apiPost<{ user?: { mustChangePassword?: boolean }; token?: string }>('/auth/login', body),
     onSuccess: (data) => {
       if (!data?.user) {
         setError(getLoginErrorMessage(getApiBaseUrl()));
         return;
       }
-      qc.setQueryData(['me'], data);
+      if (data.token) setToken(data.token);
+      qc.setQueryData(['me'], { user: data.user });
       if (data.user.mustChangePassword) navigate('/profile?changePassword=1');
       else navigate('/dashboard');
     },

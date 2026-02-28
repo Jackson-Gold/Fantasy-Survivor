@@ -1,4 +1,5 @@
 import type { Request, Response, NextFunction } from 'express';
+import jwt from 'jsonwebtoken';
 import { db } from '../db/index.js';
 import { users } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
@@ -18,16 +19,19 @@ declare global {
   }
 }
 
-type SessionData = {
-  userId?: number;
-  destroy?: (cb: (err?: Error) => void) => void;
-  adminVerifiedAt?: number;
-};
+const secret = process.env.SESSION_SECRET ?? 'dev-secret-change-in-production';
 
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
-  const session = req.session as unknown as SessionData;
-  const uid = session?.userId;
-  if (!uid) {
+  const auth = req.headers.authorization;
+  if (!auth || !auth.startsWith('Bearer ')) {
+    res.status(401).json({ error: 'Not authenticated' });
+    return;
+  }
+  const token = auth.slice(7);
+  let payload: { userId: number };
+  try {
+    payload = jwt.verify(token, secret) as { userId: number };
+  } catch {
     res.status(401).json({ error: 'Not authenticated' });
     return;
   }
@@ -36,10 +40,9 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     username: users.username,
     role: users.role,
     mustChangePassword: users.mustChangePassword,
-  }).from(users).where(eq(users.id, uid));
+  }).from(users).where(eq(users.id, payload.userId));
   if (!user) {
-    if (session.destroy) session.destroy(() => {});
-    res.status(401).json({ error: 'Session invalid' });
+    res.status(401).json({ error: 'Not authenticated' });
     return;
   }
   req.user = user as SessionUser;
@@ -58,13 +61,8 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
-/** Requires requireAuth + requireAdmin first. Returns 403 if admin has not re-entered password this session. */
-export function requireAdminVerified(req: Request, res: Response, next: NextFunction) {
-  const session = req.session as unknown as SessionData;
-  if (!session?.adminVerifiedAt) {
-    res.status(403).json({ error: 'Admin re-authentication required' });
-    return;
-  }
+/** No-op: admin re-auth removed for simplicity. */
+export function requireAdminVerified(_req: Request, _res: Response, next: NextFunction) {
   next();
 }
 

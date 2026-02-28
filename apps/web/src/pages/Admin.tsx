@@ -15,31 +15,17 @@ export default function Admin() {
   const { data: me } = useQuery({
     queryKey: ['me'],
     queryFn: () => apiGet<{ user: { username: string; role: string } }>('/auth/me'),
+    retry: false,
   });
 
-  const { data: usersData, error: usersError, refetch: refetchAdmin } = useQuery({
+  const { data: usersData, error: usersError } = useQuery({
     queryKey: ['admin-users'],
     queryFn: () => apiGet<{ users: unknown[] }>('/admin/users'),
     retry: false,
     enabled: !!me?.user && me.user.role === 'admin',
   });
 
-  const needsReauth = usersError instanceof Error && usersError.message.includes('re-authentication');
   const forbidden = me?.user && me.user.role !== 'admin';
-  const [password, setPassword] = useState('');
-  const [reauthError, setReauthError] = useState<string | null>(null);
-  const queryClient = useQueryClient();
-
-  const verifyAdmin = useMutation({
-    mutationFn: (pwd: string) => apiPost<{ ok: boolean }>('/auth/verify-admin', { password: pwd }),
-    onSuccess: () => {
-      setPassword('');
-      setReauthError(null);
-      queryClient.invalidateQueries({ queryKey: ['admin-users'] });
-      refetchAdmin();
-    },
-    onError: (err: Error) => setReauthError(err.message),
-  });
 
   if (me && !me.user) return <Navigate to="/login" replace />;
   if (forbidden) {
@@ -47,38 +33,6 @@ export default function Admin() {
       <div className="py-8">
         <h1 className="font-display text-2xl text-ocean-900 mb-4">Admin</h1>
         <p className="text-ember-600">Access denied. Admin only.</p>
-      </div>
-    );
-  }
-
-  if (!!me?.user && me.user.role === 'admin' && needsReauth) {
-    return (
-      <div className="py-8 max-w-md">
-        <h1 className="font-display text-2xl text-ocean-900 mb-4">Admin</h1>
-        <p className="text-ocean-700 mb-4">Re-enter your password to continue.</p>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!password.trim()) return;
-            verifyAdmin.mutate(password);
-          }}
-          className="card-tribal p-4 space-y-3"
-        >
-          <div>
-            <label className="block text-sm font-medium text-ocean-800 mb-1">Password</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="input-tribal"
-              autoComplete="current-password"
-            />
-          </div>
-          {reauthError && <p className="text-ember-600 text-sm">{reauthError}</p>}
-          <button type="submit" className="btn-primary" disabled={verifyAdmin.isPending}>
-            {verifyAdmin.isPending ? 'Verifying…' : 'Continue'}
-          </button>
-        </form>
       </div>
     );
   }

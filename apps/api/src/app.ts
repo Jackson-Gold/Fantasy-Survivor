@@ -1,9 +1,6 @@
 import express from 'express';
-import session from 'express-session';
 import cors from 'cors';
-import connectPgSimple from 'connect-pg-simple';
 import rateLimit from 'express-rate-limit';
-import pg from 'pg';
 import { authRouter } from './routes/auth.js';
 import { leaguesRouter } from './routes/leagues.js';
 import { adminRouter } from './routes/admin.js';
@@ -12,9 +9,6 @@ import { predictionsRouter } from './routes/predictions.js';
 import { tradesRouter } from './routes/trades.js';
 import { leaderboardRouter } from './routes/leaderboard.js';
 import { activityRouter } from './routes/activity.js';
-
-const pgSession = connectPgSimple(session);
-const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 10 });
 
 const corsOrigins = (process.env.CORS_ORIGINS ?? 'http://localhost:5173').split(',').map((o) => o.trim()).filter(Boolean);
 
@@ -28,25 +22,10 @@ export function createApp() {
         if (corsOrigins.includes(origin)) return cb(null, true);
         cb(null, false);
       },
-      credentials: true,
+      credentials: false,
     })
   );
   app.use(express.json());
-
-  app.use(
-    session({
-      store: new pgSession({ pool, tableName: 'user_sessions' }),
-      secret: process.env.SESSION_SECRET ?? 'dev-secret-change-in-production',
-      resave: false,
-      saveUninitialized: false,
-      cookie: {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-        maxAge: 7 * 24 * 60 * 60 * 1000,
-      },
-    })
-  );
 
   const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
