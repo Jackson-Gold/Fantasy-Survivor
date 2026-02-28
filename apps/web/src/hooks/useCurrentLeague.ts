@@ -6,7 +6,15 @@ export type CurrentLeague = { id: number; name: string; seasonName?: string };
 export function useCurrentLeague() {
   const { data, isLoading, error } = useQuery({
     queryKey: ['league-current'],
-    queryFn: () => apiGet<{ league: CurrentLeague }>('/leagues/current'),
+    queryFn: async () => {
+      try {
+        return await apiGet<{ league: CurrentLeague }>('/leagues/current');
+      } catch (e) {
+        if (e instanceof Error && (e.message === 'No league' || e.message.includes('No league')))
+          return { league: null } as { league: CurrentLeague | null };
+        throw e;
+      }
+    },
     retry: false,
   });
   return {

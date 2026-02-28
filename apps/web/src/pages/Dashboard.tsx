@@ -205,7 +205,7 @@ function LeagueCard({ league, hideLeave }: { league: League; hideLeave?: boolean
 }
 
 export default function Dashboard() {
-  const { league: currentLeague, isLoading: leagueLoading } = useCurrentLeague();
+  const { league: currentLeague, isLoading: leagueLoading, error: leagueError } = useCurrentLeague();
   const firstLeague = currentLeague ?? null;
 
   const { data: teamData } = useQuery({
@@ -233,6 +233,18 @@ export default function Dashboard() {
     return (
       <div className="py-12 flex items-center justify-center">
         <div className="text-ocean-600">Loading…</div>
+      </div>
+    );
+  }
+
+  if (leagueError) {
+    return (
+      <div className="py-12 px-4">
+        <h1 className="font-display text-3xl tracking-wide text-ocean-900 mb-2">Dashboard</h1>
+        <div className="card-tribal p-6 border-ember-200 bg-ember-50">
+          <p className="text-ember-700 font-medium mb-1">Couldn&apos;t load your league.</p>
+          <p className="text-ocean-600 text-sm">Check that the API URL is correct and CORS allows this site. Try logging in again.</p>
+        </div>
       </div>
     );
   }

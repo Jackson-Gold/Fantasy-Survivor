@@ -38,14 +38,16 @@ export default function Profile() {
   const [message, setMessage] = useState('');
   const qc = useQueryClient();
 
-  const { data } = useQuery({
+  const { data, isLoading: meLoading, error: meError } = useQuery({
     queryKey: ['me'],
     queryFn: () => apiGet<{ user: { username: string; mustChangePassword: boolean } }>('/auth/me'),
+    retry: false,
   });
 
-  const { data: activityData } = useQuery({
+  const { data: activityData, isLoading: activityLoading } = useQuery({
     queryKey: ['activity'],
     queryFn: () => apiGet<{ activity: ActivityEntry[] }>('/activity'),
+    retry: false,
   });
 
   const changeMut = useMutation({
@@ -66,6 +68,26 @@ export default function Profile() {
   }, [forceChange]);
 
   const activity = activityData?.activity ?? [];
+
+  if (meLoading) {
+    return (
+      <div className="py-8 max-w-lg">
+        <h1 className="font-display text-3xl tracking-wide text-ocean-900 mb-2">Profile</h1>
+        <p className="text-ocean-600">Loading…</p>
+      </div>
+    );
+  }
+
+  if (meError) {
+    return (
+      <div className="py-8 max-w-lg">
+        <h1 className="font-display text-3xl tracking-wide text-ocean-900 mb-2">Profile</h1>
+        <div className="card-tribal p-4 border-ember-200 bg-ember-50">
+          <p className="text-ember-700">Session expired or invalid. Please log in again.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="py-8 max-w-lg">
@@ -121,7 +143,9 @@ export default function Profile() {
 
       <section className="card-tribal p-4">
         <h2 className="font-semibold text-ocean-800 mb-3">Recent activity</h2>
-        {activity.length === 0 ? (
+        {activityLoading ? (
+          <p className="text-ocean-600 text-sm">Loading…</p>
+        ) : activity.length === 0 ? (
           <p className="text-ocean-600 text-sm">No recent activity.</p>
         ) : (
           <ul className="space-y-2">

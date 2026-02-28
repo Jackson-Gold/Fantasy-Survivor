@@ -49,7 +49,7 @@ All production URLs and secrets are **env-driven**; nothing is hardcoded.
    | `NODE_ENV`       | `production` |
    | `DATABASE_URL`   | **Internal Database URL** from your Render Postgres (from the Connect menu). |
    | `SESSION_SECRET`| Long random string (e.g. `openssl rand -hex 32`). |
-   | `CORS_ORIGINS`   | Comma-separated allowlist. Include your **frontend URL** (Render Static Site URL) and, if needed, `http://localhost:5173` for local dev. Example: `https://fantasy-survivor.onrender.com,http://localhost:5173` |
+   | `CORS_ORIGINS`   | Comma-separated allowlist. **Must include your Static Site URL** (e.g. `https://fantasy-survivor-static.onrender.com`) so the browser can send the session cookie from the frontend to the API. Also add `http://localhost:5173` for local dev. Example: `https://fantasy-survivor-static.onrender.com,http://localhost:5173` |
 
    Optional:
 
