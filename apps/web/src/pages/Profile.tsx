@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '../lib/api';
+import { ContestantAvatar } from '../components/ContestantAvatar';
 import { useCurrentLeague } from '../hooks/useCurrentLeague';
 
 type ActivityEntry = {
@@ -130,11 +131,11 @@ export default function Profile() {
             {roster.length === 0 ? (
               <p className="text-ocean-600 text-sm mb-3">No roster yet.</p>
             ) : (
-              <ul className="space-y-1 mb-3">
+              <ul className="space-y-2 mb-3">
                 {roster.map((r) => (
-                  <li key={r.id} className="text-ocean-800">
-                    {r.name}
-                    {r.status !== 'active' && <span className="text-ocean-600 text-sm"> ({r.status})</span>}
+                  <li key={r.id} className="flex items-center gap-2 text-ocean-800">
+                    <ContestantAvatar name={r.name} size="sm" />
+                    <span>{r.name}{r.status !== 'active' && <span className="text-ocean-600 text-sm"> ({r.status})</span>}</span>
                   </li>
                 ))}
               </ul>
@@ -147,7 +148,10 @@ export default function Profile() {
           <section className="card-tribal p-4">
             <h2 className="font-semibold text-ocean-800 mb-3">Picks</h2>
             {winnerPick ? (
-              <p className="text-ocean-800 text-sm mb-1">Winner pick: <strong>{winnerPick.name}</strong></p>
+              <p className="text-ocean-800 text-sm mb-1 flex items-center gap-2">
+                <ContestantAvatar name={winnerPick.name} size="sm" />
+                <span>Winner pick: <strong>{winnerPick.name}</strong></span>
+              </p>
             ) : (
               <p className="text-ocean-600 text-sm mb-1">No winner pick yet.</p>
             )}

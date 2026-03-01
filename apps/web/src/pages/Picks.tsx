@@ -3,6 +3,7 @@ import { useParams, Link, Navigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPost } from '../lib/api';
 import { useCurrentLeague } from '../hooks/useCurrentLeague';
+import { ContestantAvatar } from '../components/ContestantAvatar';
 
 const VOTE_TOTAL = 10;
 
@@ -43,7 +44,12 @@ export default function Picks() {
       <section className="rounded-xl border border-sand-300 bg-sand-50 p-4 mb-6">
         <h2 className="font-semibold text-ocean-800 mb-2">Winner pick</h2>
         {winnerData?.locked && <p className="text-amber-700 text-sm mb-2">Locked.</p>}
-        {winnerData?.pick && <p className="text-ocean-800">Your pick: <strong>{winnerData.pick.name}</strong></p>}
+        {winnerData?.pick && (
+          <p className="text-ocean-800 flex items-center gap-2">
+            <ContestantAvatar name={winnerData.pick.name} size="sm" />
+            <span>Your pick: <strong>{winnerData.pick.name}</strong></span>
+          </p>
+        )}
         {!winnerData?.locked && (
           <WinnerPickForm leagueId={id} currentId={winnerData?.pick?.contestantId} onSave={(cid) => setWinner.mutate(cid)} />
         )}
@@ -93,7 +99,9 @@ function WinnerPickForm({
       >
         <option value="">Choose winner…</option>
         {(data?.contestants ?? []).map((c) => (
-          <option key={c.id} value={c.id}>{c.name}</option>
+          <option key={c.id} value={c.id}>
+            {c.name}
+          </option>
         ))}
       </select>
       <button

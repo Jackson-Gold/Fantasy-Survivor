@@ -7,8 +7,8 @@ if (!connectionString) {
   throw new Error('DATABASE_URL is required');
 }
 
-// Render and other cloud Postgres require SSL for external connections.
-// Enable SSL when the host is not localhost (connection string has no sslmode already).
+// Render and other cloud Postgres require SSL. Internal URLs often use self-signed certs.
+// Use rejectUnauthorized: false so connection works on Render (traffic still encrypted).
 const useSsl =
   process.env.DATABASE_SSL === 'true' ||
   (process.env.DATABASE_SSL !== 'false' &&
@@ -17,7 +17,7 @@ const useSsl =
 const pool = new pg.Pool({
   connectionString,
   max: 10,
-  ...(useSsl && { ssl: { rejectUnauthorized: true } }),
+  ...(useSsl && { ssl: { rejectUnauthorized: false } }),
 });
 
 export const db = drizzle(pool, { schema });

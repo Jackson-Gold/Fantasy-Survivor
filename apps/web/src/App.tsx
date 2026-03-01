@@ -8,6 +8,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import MyTeam from './pages/MyTeam';
 import Picks from './pages/Picks';
+import PicksEpisode from './pages/PicksEpisode';
 import Trades from './pages/Trades';
 import Leaderboard from './pages/Leaderboard';
 import Profile from './pages/Profile';
@@ -49,6 +50,7 @@ export default function App() {
         <Route path="dashboard" element={<Protected><Dashboard /></Protected>} />
         <Route path="team/:leagueId" element={<Protected><MyTeam /></Protected>} />
         <Route path="picks/:leagueId" element={<Protected><Picks /></Protected>} />
+        <Route path="picks/:leagueId/episode/:episodeId" element={<Protected><PicksEpisode /></Protected>} />
         <Route path="trades/:leagueId" element={<Protected><Trades /></Protected>} />
         <Route path="leaderboard/:leagueId" element={<Protected><Leaderboard /></Protected>} />
         <Route path="profile" element={<Protected><Profile /></Protected>} />

@@ -2,6 +2,7 @@ import { useParams, Link, Navigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPost, apiDelete } from '../lib/api';
 import { useCurrentLeague } from '../hooks/useCurrentLeague';
+import { ContestantAvatar } from '../components/ContestantAvatar';
 
 type RosterItem = { id: number; contestantId: number; name: string; status: string };
 type Contestant = { id: number; name: string; status: string };
@@ -12,6 +13,12 @@ export default function MyTeam() {
   const id = parseInt(leagueId ?? '0', 10);
   const { league: currentLeague, isLoading: leagueLoading } = useCurrentLeague();
 
+  const { data: me } = useQuery({
+    queryKey: ['me'],
+    queryFn: () => apiGet<{ user: { role: string } }>('/auth/me'),
+  });
+  const isAdmin = me?.user?.role === 'admin';
+
   const { data: teamData, isLoading } = useQuery({
     queryKey: ['team', id],
     queryFn: () => apiGet<{ roster: RosterItem[]; locked: boolean; lockAt: string | null }>(`/teams/${id}`),
@@ -21,7 +28,7 @@ export default function MyTeam() {
   const { data: contestantsData } = useQuery({
     queryKey: ['contestants', id],
     queryFn: () => apiGet<{ contestants: Contestant[] }>(`/leagues/${id}/contestants`),
-    enabled: id > 0 && !!teamData && !teamData.locked,
+    enabled: id > 0 && !!teamData && !teamData.locked && isAdmin,
   });
 
   const addMut = useMutation({
@@ -52,13 +59,20 @@ export default function MyTeam() {
       {teamData.locked && (
         <p className="rounded-lg bg-amber-100 text-amber-800 p-3 mb-4">Roster is locked until after the next episode.</p>
       )}
-      <div className="rounded-xl border border-sand-300 bg-sand-50 p-4 mb-6">
-        <h2 className="font-semibold text-ocean-800 mb-2">Your roster (2–3 contestants)</h2>
-        <ul className="space-y-2">
+      <div className="card-tribal p-6 mb-6">
+        <h2 className="font-semibold text-ocean-800 mb-3">Your roster (2–3 contestants)</h2>
+        <ul className="space-y-3">
           {roster.map((r) => (
-            <li key={r.id} className="flex justify-between items-center">
-              <span>{r.name} {r.status !== 'active' && <span className="text-ocean-600">({r.status})</span>}</span>
-              {!teamData.locked && roster.length > 2 && (
+            <li key={r.id} className="flex items-center gap-3">
+              <ContestantAvatar name={r.name} size="md" />
+              <div className="flex-1">
+                <span className="font-medium text-ocean-900">{r.name}</span>
+                {r.status !== 'active' && (
+                  <span className="text-ocean-600 text-sm ml-2">({r.status})</span>
+                )}
+                <p className="text-sand-600 text-sm mt-0.5">Stats coming soon</p>
+              </div>
+              {isAdmin && !teamData.locked && roster.length > 2 && (
                 <button
                   onClick={() => removeMut.mutate(r.contestantId)}
                   className="text-red-600 text-sm hover:underline"
@@ -69,11 +83,11 @@ export default function MyTeam() {
             </li>
           ))}
         </ul>
-        {!teamData.locked && roster.length < 3 && available.length > 0 && (
+        {isAdmin && !teamData.locked && roster.length < 3 && available.length > 0 && (
           <div className="mt-4">
             <label className="block text-sm font-medium text-ocean-800 mb-1">Add contestant</label>
             <select
-              className="rounded border border-sand-300 px-3 py-2"
+              className="input-tribal max-w-xs"
               onChange={(e) => {
                 const v = e.target.value;
                 if (v) addMut.mutate(parseInt(v, 10));

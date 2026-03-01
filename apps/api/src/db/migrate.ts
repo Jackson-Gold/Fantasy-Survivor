@@ -16,7 +16,7 @@ export async function runMigrations(): Promise<void> {
       !/^postgres(?:ql)?:\/\/(?:[^@]*@)?(?:localhost|127\.0\.0\.1)(?:\/|$)/i.test(connectionString));
   const pool = new pg.Pool({
     connectionString,
-    ...(useSsl && { ssl: { rejectUnauthorized: true } }),
+    ...(useSsl && { ssl: { rejectUnauthorized: false } }),
   });
 
   const tableExists = await pool.query(
