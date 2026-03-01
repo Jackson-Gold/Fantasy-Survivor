@@ -1,4 +1,5 @@
 import express from 'express';
+import path from 'path';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 import { authRouter } from './routes/auth.js';
@@ -9,6 +10,7 @@ import { predictionsRouter } from './routes/predictions.js';
 import { tradesRouter } from './routes/trades.js';
 import { leaderboardRouter } from './routes/leaderboard.js';
 import { activityRouter } from './routes/activity.js';
+import { profileRouter } from './routes/profile.js';
 
 const corsOrigins = (process.env.CORS_ORIGINS ?? 'http://localhost:5173').split(',').map((o) => o.trim()).filter(Boolean);
 
@@ -42,6 +44,10 @@ export function createApp() {
   app.use('/api/v1/trades', tradesRouter);
   app.use('/api/v1/leaderboard', leaderboardRouter);
   app.use('/api/v1/activity', activityRouter);
+  app.use('/api/v1/profile', profileRouter);
+
+  const uploadsDir = process.env.UPLOAD_PATH || path.join(process.cwd(), 'uploads');
+  app.use('/api/v1/uploads', express.static(uploadsDir));
 
   app.get('/api/v1/health', (_req, res) => res.json({ ok: true }));
 

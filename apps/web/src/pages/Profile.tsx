@@ -1,7 +1,9 @@
+import { useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { apiGet } from '../lib/api';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiGet, apiPost } from '../lib/api';
 import { ContestantAvatar } from '../components/ContestantAvatar';
+import { UserAvatar } from '../components/UserAvatar';
 import { useCurrentLeague } from '../hooks/useCurrentLeague';
 
 type ActivityEntry = {
@@ -36,10 +38,17 @@ type Trade = { id: number; status: string; note: string | null };
 type Episode = { id: number; episodeNumber: number; title: string | null; lockAt: string };
 
 export default function Profile() {
+  const qc = useQueryClient();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const { data, isLoading: meLoading, error: meError } = useQuery({
     queryKey: ['me'],
-    queryFn: () => apiGet<{ user: { username: string; role?: string } }>('/auth/me'),
+    queryFn: () => apiGet<{ user: { username: string; role?: string; avatarUrl?: string | null } }>('/auth/me'),
     retry: false,
+  });
+
+  const uploadAvatar = useMutation({
+    mutationFn: (imageDataUrl: string) => apiPost<{ avatar_url: string }>('/profile/avatar', { image: imageDataUrl }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['me'] }),
   });
 
   const { league: currentLeague } = useCurrentLeague();
@@ -102,7 +111,18 @@ export default function Profile() {
   }
 
   const username = data?.user?.username ?? '';
-  const initials = username.slice(0, 2).toUpperCase();
+
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      if (dataUrl) uploadAvatar.mutate(dataUrl);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
 
   return (
     <div className="py-8 max-w-2xl mx-auto">
@@ -110,14 +130,29 @@ export default function Profile() {
 
       <section className="card-tribal p-5 mb-6">
         <div className="flex items-center gap-4">
-          <div className="w-14 h-14 rounded-full bg-ocean-700 text-white flex items-center justify-center font-display text-xl tracking-wide shrink-0">
-            {initials}
-          </div>
-          <div>
+          <UserAvatar username={username} avatarUrl={data?.user?.avatarUrl} size="lg" />
+          <div className="flex-1">
             <p className="font-semibold text-ocean-900 text-lg">{username}</p>
             <span className="inline-block mt-1 px-2 py-0.5 rounded text-xs font-medium bg-ocean-100 text-ocean-800">
               {data?.user?.role === 'admin' ? 'Admin' : 'Player'}
             </span>
+            <div className="mt-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/png"
+                className="hidden"
+                onChange={handleAvatarChange}
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="text-sm text-ember-600 hover:underline"
+              >
+                {uploadAvatar.isPending ? 'Uploading…' : 'Upload profile photo'}
+              </button>
+              {uploadAvatar.isError && <span className="text-red-600 text-sm ml-2">{(uploadAvatar.error as Error).message}</span>}
+            </div>
           </div>
         </div>
       </section>

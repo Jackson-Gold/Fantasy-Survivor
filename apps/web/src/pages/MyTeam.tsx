@@ -15,9 +15,16 @@ export default function MyTeam() {
 
   const { data: me } = useQuery({
     queryKey: ['me'],
-    queryFn: () => apiGet<{ user: { role: string } }>('/auth/me'),
+    queryFn: () => apiGet<{ user: { id: number; role: string } }>('/auth/me'),
   });
   const isAdmin = me?.user?.role === 'admin';
+
+  const { data: breakdownData } = useQuery({
+    queryKey: ['leaderboard', id, 'breakdown'],
+    queryFn: () => apiGet<{ leaderboard: { userId: number; scoring_event: number; total: number }[] }>(`/leaderboard/${id}/breakdown`),
+    enabled: id > 0,
+  });
+  const myBreakdown = breakdownData?.leaderboard?.find((r) => r.userId === me?.user?.id);
 
   const { data: teamData, isLoading } = useQuery({
     queryKey: ['team', id],
@@ -50,21 +57,50 @@ export default function MyTeam() {
   const onRosterIds = new Set(roster.map((r) => r.contestantId));
   const available = (contestantsData?.contestants ?? []).filter((c) => !onRosterIds.has(c.id));
 
+  const activeCount = roster.filter((r) => r.status === 'active').length;
+  const eliminatedCount = roster.length - activeCount;
+
   return (
     <div className="py-8">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-ocean-900">My Team</h1>
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h1 className="text-2xl font-bold text-ocean-900">My Team</h1>
+          <p className="text-ocean-600 text-sm mt-1">Your tribe. Your edge.</p>
+        </div>
         <Link to="/dashboard" className="text-ember-600 hover:underline">← Dashboard</Link>
       </div>
       {teamData.locked && (
         <p className="rounded-lg bg-amber-100 text-amber-800 p-3 mb-4">Roster is locked until after the next episode.</p>
       )}
+
+      {roster.length === 0 ? (
+        <div className="card-tribal p-6 mb-6 text-center">
+          <p className="text-ocean-700">Your roster is empty.</p>
+          <p className="text-ocean-600 text-sm mt-2">An admin will add your contestants.</p>
+        </div>
+      ) : (
+        <>
+          <div className="card-tribal p-4 mb-4 grid gap-3 sm:grid-cols-2">
+            <div>
+              <h3 className="text-sm font-medium text-ocean-700">Roster points this season</h3>
+              <p className="text-xl font-bold text-ocean-900">{myBreakdown != null ? Number(myBreakdown.scoring_event).toFixed(0) : '—'}</p>
+              <p className="text-sand-600 text-xs">Points from your team&apos;s outcomes</p>
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-ocean-700">Roster status</h3>
+              <p className="text-ocean-900">
+                {activeCount} active{eliminatedCount > 0 ? `, ${eliminatedCount} eliminated` : ''}
+              </p>
+            </div>
+          </div>
+          <p className="text-sand-500 text-xs mb-4">Lock is Wednesday 8:00 PM ET. Rosters lock each week until the next episode.</p>
+
       <div className="card-tribal p-6 mb-6">
         <h2 className="font-semibold text-ocean-800 mb-3">Your roster (2–3 contestants)</h2>
         <ul className="space-y-3">
           {roster.map((r) => (
             <li key={r.id} className="flex items-center gap-3">
-              <ContestantAvatar name={r.name} size="md" />
+              <ContestantAvatar name={r.name} size="lg" />
               <div className="flex-1">
                 <span className="font-medium text-ocean-900">{r.name}</span>
                 {r.status !== 'active' && (
@@ -101,6 +137,8 @@ export default function MyTeam() {
           </div>
         )}
       </div>
+        </>
+      )}
     </div>
   );
 }

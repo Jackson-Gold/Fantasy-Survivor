@@ -62,6 +62,30 @@ teamsRouter.get('/:leagueId', async (req: Request, res: Response) => {
   res.json({ roster, locked, lockAt: lockAt?.toISOString() ?? null });
 });
 
+teamsRouter.get('/:leagueId/roster/:userId', async (req: Request, res: Response) => {
+  const leagueId = parseInt(req.params.leagueId, 10);
+  const targetUserId = parseInt(req.params.userId, 10);
+  if (Number.isNaN(leagueId) || Number.isNaN(targetUserId)) {
+    res.status(400).json({ error: 'Invalid id' });
+    return;
+  }
+  const ok = await ensureLeagueMember(req.user!.id, leagueId);
+  if (!ok) {
+    res.status(404).json({ error: 'League not found' });
+    return;
+  }
+  const roster = await db
+    .select({
+      id: teams.id,
+      contestantId: teams.contestantId,
+      name: contestants.name,
+    })
+    .from(teams)
+    .innerJoin(contestants, eq(teams.contestantId, contestants.id))
+    .where(and(eq(teams.leagueId, leagueId), eq(teams.userId, targetUserId)));
+  res.json({ roster });
+});
+
 const addBody = z.object({ contestantId: z.number().int().positive() });
 teamsRouter.post('/:leagueId/add', requireAdmin, async (req: Request, res: Response) => {
   const leagueId = parseInt(req.params.leagueId, 10);

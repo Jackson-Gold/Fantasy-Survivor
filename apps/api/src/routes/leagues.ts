@@ -80,6 +80,29 @@ leaguesRouter.delete('/:leagueId/members/me', async (req: Request, res: Response
   res.json({ ok: true });
 });
 
+leaguesRouter.get('/:id/members', async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id, 10);
+  if (Number.isNaN(id)) {
+    res.status(400).json({ error: 'Invalid league id' });
+    return;
+  }
+  const userId = req.user!.id;
+  const [member] = await db
+    .select()
+    .from(leagueMembers)
+    .where(and(eq(leagueMembers.leagueId, id), eq(leagueMembers.userId, userId)));
+  if (!member) {
+    res.status(404).json({ error: 'League not found' });
+    return;
+  }
+  const list = await db
+    .select({ id: users.id, username: users.username })
+    .from(leagueMembers)
+    .innerJoin(users, eq(leagueMembers.userId, users.id))
+    .where(eq(leagueMembers.leagueId, id));
+  res.json({ members: list });
+});
+
 leaguesRouter.get('/:id/contestants', async (req: Request, res: Response) => {
   const id = parseInt(req.params.id, 10);
   if (Number.isNaN(id)) {

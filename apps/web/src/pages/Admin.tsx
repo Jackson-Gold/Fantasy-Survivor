@@ -66,9 +66,16 @@ function AdminUsers() {
     queryKey: ['admin-users'],
     queryFn: () => apiGet<{ users: { id: number; username: string; role: string; mustChangePassword: boolean }[] }>('/admin/users'),
   });
+  const { data: me } = useQuery({
+    queryKey: ['me'],
+    queryFn: () => apiGet<{ user: { id: number } }>('/auth/me'),
+  });
   const users = data?.users ?? [];
+  const myId = me?.user?.id;
+  const adminCount = users.filter((u) => u.role === 'admin').length;
   const [editingId, setEditingId] = useState<number | null>(null);
   const [resetId, setResetId] = useState<number | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [newPassword, setNewPassword] = useState('');
   const [newUsername, setNewUsername] = useState('');
   const [newUserPassword, setNewUserPassword] = useState('');
@@ -98,6 +105,14 @@ function AdminUsers() {
     onSuccess: () => {
       setResetId(null);
       setNewPassword('');
+      qc.invalidateQueries({ queryKey: ['admin-users'] });
+    },
+  });
+
+  const deleteUser = useMutation({
+    mutationFn: (id: number) => apiDelete(`/admin/users/${id}`),
+    onSuccess: () => {
+      setDeleteConfirmId(null);
       qc.invalidateQueries({ queryKey: ['admin-users'] });
     },
   });
@@ -187,6 +202,17 @@ function AdminUsers() {
                 <span className="text-ocean-600 text-sm">{u.role}</span>
                 <button type="button" onClick={() => setEditingId(u.id)} className="text-sm text-ember-600 hover:underline">Edit</button>
               </>
+            )}
+            {deleteConfirmId === u.id ? (
+              <span className="flex items-center gap-2 ml-2">
+                <span className="text-sm text-ocean-700">Delete this user?</span>
+                <button type="button" className="text-sm text-red-600 font-medium hover:underline" onClick={() => deleteUser.mutate(u.id)} disabled={deleteUser.isPending}>Yes, delete</button>
+                <button type="button" className="text-sm text-ocean-600 hover:underline" onClick={() => setDeleteConfirmId(null)}>Cancel</button>
+              </span>
+            ) : (
+              u.id !== myId && !(u.role === 'admin' && adminCount <= 1) && (
+                <button type="button" onClick={() => setDeleteConfirmId(u.id)} className="text-sm text-red-600 hover:underline">Delete user</button>
+              )
             )}
             {resetId === u.id ? (
               <span className="flex items-center gap-2 ml-2">
@@ -398,7 +424,7 @@ function AdminLeagueDetail() {
 
       <div id="contestants"><AdminLeagueContestants leagueId={leagueId} contestants={contestants} /></div>
       <div id="episodes"><AdminLeagueEpisodes leagueId={leagueId} episodes={episodes} /></div>
-      <div id="outcomes"><AdminLeagueOutcomes leagueId={leagueId} episodes={episodes} contestants={contestants} /></div>
+      <div id="outcomes"><AdminLeagueOutcomes leagueId={leagueId} episodes={episodes} contestants={contestants} scoringRules={scoringRules} /></div>
       <div id="winner-picks"><AdminLeagueWinnerPicks leagueId={leagueId} contestants={contestants} /></div>
       <div id="vote-predictions"><AdminLeagueVotePredictions leagueId={leagueId} episodes={episodes} contestants={contestants} /></div>
       <div id="teams"><AdminLeagueRosters leagueId={leagueId} contestants={contestants} /></div>
@@ -474,6 +500,7 @@ function AdminLeagueEpisodes({ leagueId, episodes }: { leagueId: number; episode
   const [epNum, setEpNum] = useState('');
   const [title, setTitle] = useState('');
   const [airDate, setAirDate] = useState('');
+  const [deleteConfirmEpId, setDeleteConfirmEpId] = useState<number | null>(null);
   const qc = useQueryClient();
   const createEpisode = useMutation({
     mutationFn: (body: { episodeNumber: number; title?: string; airDate: string }) =>
@@ -482,6 +509,13 @@ function AdminLeagueEpisodes({ leagueId, episodes }: { leagueId: number; episode
       setEpNum('');
       setTitle('');
       setAirDate('');
+      qc.invalidateQueries({ queryKey: ['admin-leagues', leagueId, 'episodes'] });
+    },
+  });
+  const deleteEpisode = useMutation({
+    mutationFn: (episodeId: number) => apiDelete(`/admin/leagues/${leagueId}/episodes/${episodeId}`),
+    onSuccess: () => {
+      setDeleteConfirmEpId(null);
       qc.invalidateQueries({ queryKey: ['admin-leagues', leagueId, 'episodes'] });
     },
   });
@@ -518,10 +552,19 @@ function AdminLeagueEpisodes({ leagueId, episodes }: { leagueId: number; episode
         />
         <button type="submit" className="btn-primary" disabled={createEpisode.isPending}>Create episode</button>
       </form>
-      <ul className="space-y-1 text-sm">
+      <ul className="space-y-2 text-sm">
         {episodes.map((ep) => (
-          <li key={ep.id} className="text-ocean-700">
-            Ep {ep.episodeNumber} {ep.title ? `— ${ep.title}` : ''} · Lock: {new Date(ep.lockAt).toLocaleString()}
+          <li key={ep.id} className="flex items-center justify-between gap-2 text-ocean-700">
+            <span>Ep {ep.episodeNumber} {ep.title ? `— ${ep.title}` : ''} · Lock: {new Date(ep.lockAt).toLocaleString()}</span>
+            {deleteConfirmEpId === ep.id ? (
+              <span className="flex items-center gap-2">
+                <span className="text-ocean-600">Delete?</span>
+                <button type="button" className="text-red-600 text-sm font-medium hover:underline" onClick={() => deleteEpisode.mutate(ep.id)} disabled={deleteEpisode.isPending}>Yes</button>
+                <button type="button" className="text-ocean-600 text-sm hover:underline" onClick={() => setDeleteConfirmEpId(null)}>Cancel</button>
+              </span>
+            ) : (
+              <button type="button" onClick={() => setDeleteConfirmEpId(ep.id)} className="text-red-600 text-sm hover:underline">Delete</button>
+            )}
           </li>
         ))}
       </ul>
@@ -529,26 +572,48 @@ function AdminLeagueEpisodes({ leagueId, episodes }: { leagueId: number; episode
   );
 }
 
+const OUTCOME_EXCLUDED_ACTIONS = ['vote_correct', 'winner_placement_1', 'winner_placement_2', 'winner_placement_3'];
+
 function AdminLeagueOutcomes({
   leagueId,
   episodes,
   contestants,
+  scoringRules,
 }: {
   leagueId: number;
   episodes: Episode[];
   contestants: Contestant[];
+  scoringRules: ScoringRule[];
 }) {
   const [episodeId, setEpisodeId] = useState<number | ''>('');
-  const [individualImmunityId, setIndividualImmunityId] = useState<number | ''>('');
-  const [idolFoundId, setIdolFoundId] = useState<number | ''>('');
-  const [idolPlayedId, setIdolPlayedId] = useState<number | ''>('');
+  const [eventRows, setEventRows] = useState<{ actionType: string; contestantId: number }[]>([]);
   const [votedOutIds, setVotedOutIds] = useState<number[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const qc = useQueryClient();
 
+  const contestantLevelRules = scoringRules.filter((r) => !OUTCOME_EXCLUDED_ACTIONS.includes(r.actionType));
+
   const toggleVotedOut = (id: number) => {
     setVotedOutIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
+
+  const addEventRow = () => {
+    const firstType = contestantLevelRules[0]?.actionType ?? '';
+    const firstContestant = contestants[0]?.id;
+    if (firstType && firstContestant != null) setEventRows((prev) => [...prev, { actionType: firstType, contestantId: firstContestant }]);
+  };
+
+  const updateEventRow = (index: number, field: 'actionType' | 'contestantId', value: string | number) => {
+    setEventRows((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], [field]: value };
+      return next;
+    });
+  };
+
+  const removeEventRow = (index: number) => {
+    setEventRows((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -561,28 +626,12 @@ function AdminLeagueOutcomes({
     setSubmitting(true);
     setMessage(null);
     try {
-      if (individualImmunityId) {
+      for (const row of eventRows) {
         await apiPost('/admin/scoring-events', {
           leagueId,
           episodeId: epId,
-          actionType: 'individual_immunity',
-          contestantId: Number(individualImmunityId),
-        });
-      }
-      if (idolFoundId) {
-        await apiPost('/admin/scoring-events', {
-          leagueId,
-          episodeId: epId,
-          actionType: 'idol_found',
-          contestantId: Number(idolFoundId),
-        });
-      }
-      if (idolPlayedId) {
-        await apiPost('/admin/scoring-events', {
-          leagueId,
-          episodeId: epId,
-          actionType: 'idol_played',
-          contestantId: Number(idolPlayedId),
+          actionType: row.actionType,
+          contestantId: row.contestantId,
         });
       }
       for (const cId of votedOutIds) {
@@ -599,9 +648,7 @@ function AdminLeagueOutcomes({
         });
       }
       setMessage('Outcomes submitted.');
-      setIndividualImmunityId('');
-      setIdolFoundId('');
-      setIdolPlayedId('');
+      setEventRows([]);
       setVotedOutIds([]);
       qc.invalidateQueries({ queryKey: ['admin-leagues', leagueId] });
     } catch (err) {
@@ -631,43 +678,36 @@ function AdminLeagueOutcomes({
           </select>
         </div>
         <div>
-          <label className="block text-sm font-medium text-ocean-800 mb-1">Individual immunity</label>
-          <select
-            value={individualImmunityId}
-            onChange={(e) => setIndividualImmunityId(e.target.value === '' ? '' : Number(e.target.value))}
-            className="input-tribal max-w-xs"
-          >
-            <option value="">—</option>
-            {contestants.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
+          <label className="block text-sm font-medium text-ocean-800 mb-1">Events (from scoring rules)</label>
+          <p className="text-ocean-600 text-xs mb-2">Add events using the action types defined in Scoring rules.</p>
+          <button type="button" onClick={addEventRow} className="text-sm text-ember-600 hover:underline mb-2" disabled={contestantLevelRules.length === 0}>
+            + Add event
+          </button>
+          <ul className="space-y-2">
+            {eventRows.map((row, i) => (
+              <li key={i} className="flex flex-wrap items-center gap-2">
+                <select
+                  value={row.actionType}
+                  onChange={(e) => updateEventRow(i, 'actionType', e.target.value)}
+                  className="input-tribal max-w-[180px]"
+                >
+                  {contestantLevelRules.map((r) => (
+                    <option key={r.id} value={r.actionType}>{r.actionType} ({r.points} pts)</option>
+                  ))}
+                </select>
+                <select
+                  value={row.contestantId}
+                  onChange={(e) => updateEventRow(i, 'contestantId', Number(e.target.value))}
+                  className="input-tribal max-w-[140px]"
+                >
+                  {contestants.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+                <button type="button" onClick={() => removeEventRow(i)} className="text-red-600 text-sm hover:underline">Remove</button>
+              </li>
             ))}
-          </select>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-ocean-800 mb-1">Idol found</label>
-          <select
-            value={idolFoundId}
-            onChange={(e) => setIdolFoundId(e.target.value === '' ? '' : Number(e.target.value))}
-            className="input-tribal max-w-xs"
-          >
-            <option value="">—</option>
-            {contestants.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-ocean-800 mb-1">Idol played</label>
-          <select
-            value={idolPlayedId}
-            onChange={(e) => setIdolPlayedId(e.target.value === '' ? '' : Number(e.target.value))}
-            className="input-tribal max-w-xs"
-          >
-            <option value="">—</option>
-            {contestants.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
+          </ul>
         </div>
         <div>
           <label className="block text-sm font-medium text-ocean-800 mb-1">Voted out</label>
@@ -1107,6 +1147,9 @@ function AdminLeagueExport({ leagueId }: { leagueId: number }) {
 
 function AdminLeagueScoringRules({ leagueId, scoringRules }: { leagueId: number; scoringRules: ScoringRule[] }) {
   const qc = useQueryClient();
+  const [newActionType, setNewActionType] = useState('');
+  const [newPoints, setNewPoints] = useState('');
+  const [applyMsg, setApplyMsg] = useState<string | null>(null);
   const putRule = useMutation({
     mutationFn: ({ id, points }: { id: number; points: number }) => apiPut(`/admin/scoring-rules/${id}`, { points }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-leagues', leagueId, 'scoring-rules'] }),
@@ -1115,16 +1158,71 @@ function AdminLeagueScoringRules({ leagueId, scoringRules }: { leagueId: number;
     mutationFn: () => apiPost(`/admin/leagues/${leagueId}/scoring-rules/defaults`, {}),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-leagues', leagueId, 'scoring-rules'] }),
   });
+  const applyScoring = useMutation({
+    mutationFn: () => apiPost<{ ok: boolean; message?: string }>(`/admin/leagues/${leagueId}/recompute-leaderboard`, {}),
+    onSuccess: (data) => {
+      setApplyMsg(data.message ?? 'Done.');
+      qc.invalidateQueries({ queryKey: ['leaderboard', leagueId] });
+    },
+    onError: (err: Error) => setApplyMsg(err.message),
+  });
+  const addRule = useMutation({
+    mutationFn: (body: { actionType: string; points: number }) => apiPost(`/admin/leagues/${leagueId}/scoring-rules`, body),
+    onSuccess: () => {
+      setNewActionType('');
+      setNewPoints('');
+      qc.invalidateQueries({ queryKey: ['admin-leagues', leagueId, 'scoring-rules'] });
+    },
+  });
   return (
     <div className="card-tribal p-4">
       <h3 className="font-semibold text-ocean-800 mb-3">Scoring rules</h3>
-      <button
-        type="button"
-        onClick={() => resetDefaults.mutate()}
-        className="text-sm text-ember-600 hover:underline mb-3"
+      <div className="flex flex-wrap gap-2 mb-3">
+        <button
+          type="button"
+          onClick={() => resetDefaults.mutate()}
+          className="text-sm text-ember-600 hover:underline"
+        >
+          Reset to defaults
+        </button>
+        <button
+          type="button"
+          onClick={() => applyScoring.mutate()}
+          className="btn-primary text-sm py-1"
+          disabled={applyScoring.isPending}
+        >
+          {applyScoring.isPending ? '…' : 'Apply scoring scheme'}
+        </button>
+      </div>
+      {applyMsg && <p className="text-sm text-ocean-600 mb-3">{applyMsg}</p>}
+      <form
+        className="flex flex-wrap gap-2 mb-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const points = parseInt(newPoints, 10);
+          if (newActionType.trim() && !Number.isNaN(points)) {
+            addRule.mutate({ actionType: newActionType.trim(), points });
+          }
+        }}
       >
-        Reset to defaults
-      </button>
+        <input
+          type="text"
+          value={newActionType}
+          onChange={(e) => setNewActionType(e.target.value)}
+          placeholder="Action type (e.g. tribe_reward_win)"
+          className="input-tribal max-w-[200px]"
+        />
+        <input
+          type="number"
+          value={newPoints}
+          onChange={(e) => setNewPoints(e.target.value)}
+          placeholder="Points"
+          className="input-tribal w-20"
+        />
+        <button type="submit" className="btn-primary text-sm py-1" disabled={addRule.isPending || !newActionType.trim() || newPoints === ''}>
+          Add criterion
+        </button>
+      </form>
       <ul className="space-y-2">
         {scoringRules.map((r) => (
           <li key={r.id} className="flex items-center gap-4">

@@ -3,8 +3,9 @@ import { useParams, Link, Navigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '../lib/api';
 import { useCurrentLeague } from '../hooks/useCurrentLeague';
+import { UserAvatar } from '../components/UserAvatar';
 
-type Row = { userId: number; username: string; total: number };
+type Row = { userId: number; username: string; avatarUrl?: string | null; total: number };
 
 type BreakdownRow = Row & {
   scoring_event: number;
@@ -81,7 +82,12 @@ export default function Leaderboard() {
               {rows.map((r, i) => (
                 <tr key={r.userId} className="border-t border-sand-200">
                   <td className="p-3">{i + 1}</td>
-                  <td className="p-3 font-medium">{r.username}</td>
+                  <td className="p-3">
+                    <div className="flex items-center gap-2">
+                      <UserAvatar username={r.username} avatarUrl={r.avatarUrl} size="sm" />
+                      <span className="font-medium">{r.username}</span>
+                    </div>
+                  </td>
                   <td className="p-3 text-right">{Number(r.total).toFixed(0)}</td>
                 </tr>
               ))}
@@ -112,7 +118,12 @@ export default function Leaderboard() {
                   {breakdownRows.map((r, i) => (
                     <tr key={r.userId} className="border-t border-sand-200">
                       <td className="p-3">{i + 1}</td>
-                      <td className="p-3 font-medium">{r.username}</td>
+                      <td className="p-3">
+                        <div className="flex items-center gap-2">
+                          <UserAvatar username={r.username} avatarUrl={r.avatarUrl} size="sm" />
+                          <span className="font-medium">{r.username}</span>
+                        </div>
+                      </td>
                       <td className="p-3 text-right">{Number(r.scoring_event).toFixed(0)}</td>
                       <td className="p-3 text-right">{Number(r.vote_prediction).toFixed(0)}</td>
                       <td className="p-3 text-right">{Number(r.winner_pick).toFixed(0)}</td>

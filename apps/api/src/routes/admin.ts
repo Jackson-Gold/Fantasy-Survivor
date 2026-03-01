@@ -19,7 +19,7 @@ import {
   trades,
   tradeItems,
 } from '../db/schema.js';
-import { eq, and, desc, asc } from 'drizzle-orm';
+import { eq, and, or, desc, asc, inArray } from 'drizzle-orm';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 
 function generateInviteCode(): string {
@@ -98,6 +98,50 @@ adminRouter.post('/users/:id/reset-password', async (req: Request, res: Response
     entityType: 'user',
     entityId: id,
     metadataJson: { resetByAdmin: true },
+  });
+  res.json({ ok: true });
+});
+
+adminRouter.delete('/users/:id', async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id, 10);
+  if (Number.isNaN(id)) {
+    res.status(400).json({ error: 'Invalid id' });
+    return;
+  }
+  if (id === req.user!.id) {
+    res.status(400).json({ error: 'Cannot delete your own account' });
+    return;
+  }
+  const [target] = await db.select().from(users).where(eq(users.id, id));
+  if (!target) {
+    res.status(404).json({ error: 'User not found' });
+    return;
+  }
+  const adminCount = await db.select().from(users).where(eq(users.role, 'admin'));
+  if (target.role === 'admin' && adminCount.length <= 1) {
+    res.status(400).json({ error: 'Cannot delete the last admin' });
+    return;
+  }
+  const userTrades = await db.select({ id: trades.id }).from(trades).where(or(eq(trades.proposerId, id), eq(trades.acceptorId, id)));
+  const tradeIds = userTrades.map((t) => t.id);
+  await db.transaction(async (tx) => {
+    if (tradeIds.length > 0) {
+      await tx.delete(tradeItems).where(inArray(tradeItems.tradeId, tradeIds));
+      await tx.delete(trades).where(inArray(trades.id, tradeIds));
+    }
+    await tx.delete(leagueMembers).where(eq(leagueMembers.userId, id));
+    await tx.delete(teams).where(eq(teams.userId, id));
+    await tx.delete(winnerPicks).where(eq(winnerPicks.userId, id));
+    await tx.delete(votePredictions).where(eq(votePredictions.userId, id));
+    await tx.delete(ledgerTransactions).where(eq(ledgerTransactions.userId, id));
+    await tx.delete(users).where(eq(users.id, id));
+  });
+  await logAudit({
+    actorUserId: req.user!.id,
+    actionType: 'user.delete',
+    entityType: 'user',
+    entityId: id,
+    metadataJson: { username: target.username },
   });
   res.json({ ok: true });
 });
@@ -603,6 +647,52 @@ adminRouter.get('/leagues/:leagueId/episodes', async (req: Request, res: Respons
   res.json({ episodes: list });
 });
 
+adminRouter.delete('/leagues/:leagueId/episodes/:episodeId', async (req: Request, res: Response) => {
+  const leagueId = parseInt(req.params.leagueId, 10);
+  const episodeId = parseInt(req.params.episodeId, 10);
+  if (Number.isNaN(leagueId) || Number.isNaN(episodeId)) {
+    res.status(400).json({ error: 'Invalid id' });
+    return;
+  }
+  const [ep] = await db.select().from(episodes).where(and(eq(episodes.id, episodeId), eq(episodes.leagueId, leagueId)));
+  if (!ep) {
+    res.status(404).json({ error: 'Episode not found' });
+    return;
+  }
+  await db.transaction(async (tx) => {
+    const evRows = await tx.select({ id: scoringEvents.id }).from(scoringEvents).where(eq(scoringEvents.episodeId, episodeId));
+    const evIds = evRows.map((r) => r.id);
+    if (evIds.length > 0) {
+      await tx.delete(ledgerTransactions).where(
+        and(
+          eq(ledgerTransactions.leagueId, leagueId),
+          eq(ledgerTransactions.reason, 'scoring_event'),
+          inArray(ledgerTransactions.referenceId, evIds)
+        )
+      );
+    }
+    await tx.delete(ledgerTransactions).where(
+      and(
+        eq(ledgerTransactions.leagueId, leagueId),
+        eq(ledgerTransactions.reason, 'vote_prediction'),
+        eq(ledgerTransactions.referenceType, 'episode'),
+        eq(ledgerTransactions.referenceId, episodeId)
+      )
+    );
+    await tx.delete(votePredictions).where(eq(votePredictions.episodeId, episodeId));
+    await tx.delete(scoringEvents).where(eq(scoringEvents.episodeId, episodeId));
+    await tx.delete(episodes).where(eq(episodes.id, episodeId));
+  });
+  await logAudit({
+    actorUserId: req.user!.id,
+    actionType: 'episode.delete',
+    entityType: 'episode',
+    entityId: episodeId,
+    metadataJson: { leagueId, episodeNumber: ep.episodeNumber },
+  });
+  res.json({ ok: true });
+});
+
 // ---------- Scoring rules ----------
 const defaultActions = [
   { actionType: 'tribe_reward_win', points: 5 },
@@ -642,6 +732,38 @@ adminRouter.get('/leagues/:leagueId/scoring-rules', async (req: Request, res: Re
   }
   const list = await db.select().from(scoringRules).where(eq(scoringRules.leagueId, leagueId));
   res.json({ scoringRules: list });
+});
+
+const addScoringRuleBody = z.object({
+  actionType: z.string().min(1).max(64),
+  points: z.number(),
+});
+adminRouter.post('/leagues/:leagueId/scoring-rules', async (req: Request, res: Response) => {
+  const leagueId = parseInt(req.params.leagueId, 10);
+  if (Number.isNaN(leagueId)) {
+    res.status(400).json({ error: 'Invalid league id' });
+    return;
+  }
+  const parsed = addScoringRuleBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid body', details: parsed.error.flatten() });
+    return;
+  }
+  try {
+    await db.insert(scoringRules).values({
+      leagueId,
+      actionType: parsed.data.actionType,
+      points: parsed.data.points,
+    });
+  } catch (e: unknown) {
+    if (e && typeof e === 'object' && 'code' in e && (e as { code: string }).code === '23505') {
+      res.status(400).json({ error: 'Scoring rule for this action type already exists' });
+      return;
+    }
+    throw e;
+  }
+  const list = await db.select().from(scoringRules).where(eq(scoringRules.leagueId, leagueId));
+  res.status(201).json({ scoringRules: list });
 });
 
 adminRouter.put('/scoring-rules/:id', async (req: Request, res: Response) => {
@@ -764,8 +886,44 @@ adminRouter.post('/leagues/:leagueId/recompute-leaderboard', async (req: Request
     res.status(404).json({ error: 'League not found' });
     return;
   }
-  // Leaderboard totals are always derived from ledger_transactions; no recomputation needed.
-  res.json({ ok: true, message: 'Leaderboard is derived from ledger; no recompute needed.' });
+  const rules = await db.select().from(scoringRules).where(eq(scoringRules.leagueId, leagueId));
+  const pointsByAction: Record<string, number> = {};
+  for (const r of rules) pointsByAction[r.actionType] = r.points;
+
+  const events = await db.select().from(scoringEvents).where(eq(scoringEvents.leagueId, leagueId));
+  let applied = 0;
+  await db.transaction(async (tx) => {
+    await tx.delete(ledgerTransactions).where(
+      and(eq(ledgerTransactions.leagueId, leagueId), eq(ledgerTransactions.reason, 'scoring_event'))
+    );
+    for (const ev of events) {
+      const points = pointsByAction[ev.actionType] ?? 0;
+      if (ev.contestantId && points !== 0) {
+        const [teamRow] = await tx.select().from(teams).where(
+          and(eq(teams.leagueId, leagueId), eq(teams.contestantId, ev.contestantId))
+        );
+        if (teamRow) {
+          await tx.insert(ledgerTransactions).values({
+            leagueId,
+            userId: teamRow.userId,
+            amount: points,
+            reason: 'scoring_event',
+            referenceType: 'scoring_event',
+            referenceId: ev.id,
+          });
+          applied++;
+        }
+      }
+    }
+  });
+  await logAudit({
+    actorUserId: req.user!.id,
+    actionType: 'admin.apply_scoring',
+    entityType: 'league',
+    entityId: leagueId,
+    metadataJson: { applied, eventCount: events.length },
+  });
+  res.json({ ok: true, message: `Recalculated points from ${events.length} scoring events.` });
 });
 
 // ---------- Audit log & ledger (read-only export) ----------

@@ -1,35 +1,34 @@
 import { useState } from 'react';
-import { getContestantImagePath } from '../lib/contestantImage';
+import { getApiBaseUrl } from '../lib/api';
 
 type Props = {
-  name: string;
-  size?: 'sm' | 'md' | 'lg' | 'xl';
+  username: string;
+  avatarUrl?: string | null;
+  size?: 'sm' | 'md' | 'lg';
   className?: string;
 };
 
 const sizeClasses = {
-  sm: 'w-10 h-10 text-xs',
-  md: 'w-16 h-16 text-sm',
-  lg: 'w-20 h-20 text-base',
-  xl: 'w-24 h-24 text-lg',
+  sm: 'w-8 h-8 text-xs',
+  md: 'w-10 h-10 text-sm',
+  lg: 'w-12 h-12 text-base',
 };
 
-export function ContestantAvatar({ name, size = 'md', className = '' }: Props) {
+export function UserAvatar({ username, avatarUrl, size = 'md', className = '' }: Props) {
   const [errored, setErrored] = useState(false);
-  const path = getContestantImagePath(name);
-  const initials = name
+  const initials = username
     .trim()
-    .split(/\s+/)
-    .map((w) => w[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2);
+    .slice(0, 2)
+    .toUpperCase();
+  const src = avatarUrl && !errored
+    ? `${getApiBaseUrl().replace(/\/$/, '')}/api/v1/uploads/${avatarUrl}`
+    : null;
 
-  if (!path || errored) {
+  if (!src) {
     return (
       <div
         className={`rounded-full bg-ocean-600 text-white flex items-center justify-center font-semibold shrink-0 ${sizeClasses[size]} ${className}`}
-        title={name}
+        title={username}
       >
         {initials || '?'}
       </div>
@@ -38,8 +37,8 @@ export function ContestantAvatar({ name, size = 'md', className = '' }: Props) {
 
   return (
     <img
-      src={path}
-      alt={name}
+      src={src}
+      alt={username}
       className={`rounded-full object-cover shrink-0 ${sizeClasses[size]} ${className}`}
       onError={() => setErrored(true)}
     />

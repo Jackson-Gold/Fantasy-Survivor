@@ -50,6 +50,7 @@ authRouter.post('/login', async (req: Request, res: Response) => {
       username: user.username,
       role: user.role,
       mustChangePassword: user.mustChangePassword,
+      avatarUrl: user.avatarUrl ?? undefined,
     },
     token,
   });

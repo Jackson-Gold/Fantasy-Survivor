@@ -8,6 +8,8 @@ import {
   leagueMembers,
   episodes,
   ledgerTransactions,
+  users,
+  contestants,
 } from '../db/schema.js';
 import { eq, and, or, desc } from 'drizzle-orm';
 import { requireAuth } from '../middleware/auth.js';
@@ -147,8 +149,25 @@ tradesRouter.get('/:leagueId', async (req: Request, res: Response) => {
     .orderBy(desc(trades.createdAt));
   const withItems = await Promise.all(
     list.map(async (t) => {
-      const items = await db.select().from(tradeItems).where(eq(tradeItems.tradeId, t.id));
-      return { ...t, items };
+      const [proposer] = await db.select({ username: users.username }).from(users).where(eq(users.id, t.proposerId));
+      const [acceptor] = await db.select({ username: users.username }).from(users).where(eq(users.id, t.acceptorId));
+      const itemRows = await db.select().from(tradeItems).where(eq(tradeItems.tradeId, t.id));
+      const items = await Promise.all(
+        itemRows.map(async (it) => {
+          let contestantName: string | null = null;
+          if (it.type === 'contestant' && it.contestantId) {
+            const [c] = await db.select({ name: contestants.name }).from(contestants).where(eq(contestants.id, it.contestantId));
+            contestantName = c?.name ?? null;
+          }
+          return { ...it, contestantName };
+        })
+      );
+      return {
+        ...t,
+        proposerUsername: proposer?.username ?? '',
+        acceptorUsername: acceptor?.username ?? '',
+        items,
+      };
     })
   );
   res.json({ trades: withItems });

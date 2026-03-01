@@ -132,7 +132,7 @@ export default function PicksEpisode() {
               key={c.id}
               className="flex items-center gap-4 p-4"
             >
-              <ContestantAvatar name={c.name} size="md" />
+              <ContestantAvatar name={c.name} size="lg" />
               <div className="flex-1 min-w-0">
                 <span className="font-medium text-ocean-900">{c.name}</span>
                 <p className="text-sand-500 text-xs mt-0.5" title="How likely is this survivor to go home?">

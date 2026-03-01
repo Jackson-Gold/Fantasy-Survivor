@@ -46,7 +46,7 @@ export default function Picks() {
         {winnerData?.locked && <p className="text-amber-700 text-sm mb-2">Locked.</p>}
         {winnerData?.pick && (
           <p className="text-ocean-800 flex items-center gap-2">
-            <ContestantAvatar name={winnerData.pick.name} size="sm" />
+            <ContestantAvatar name={winnerData.pick.name} size="md" />
             <span>Your pick: <strong>{winnerData.pick.name}</strong></span>
           </p>
         )}
