@@ -1117,7 +1117,7 @@ adminRouter.post('/leagues/:leagueId/recompute-leaderboard', async (req: Request
 // ---------- Audit log & ledger (read-only export) ----------
 adminRouter.get('/audit-log', async (req: Request, res: Response) => {
   const limit = Math.min(parseInt(req.query.limit as string, 10) || 100, 500);
-  const list = await db
+  const rows = await db
     .select({
       id: auditLog.id,
       timestamp: auditLog.timestamp,
@@ -1125,15 +1125,23 @@ adminRouter.get('/audit-log', async (req: Request, res: Response) => {
       entityType: auditLog.entityType,
       entityId: auditLog.entityId,
       actorUserId: auditLog.actorUserId,
-      actorUsername: users.username,
       beforeJson: auditLog.beforeJson,
       afterJson: auditLog.afterJson,
       metadataJson: auditLog.metadataJson,
     })
     .from(auditLog)
-    .leftJoin(users, eq(auditLog.actorUserId, users.id))
     .orderBy(desc(auditLog.timestamp))
     .limit(limit);
+  const actorIds = [...new Set(rows.map((r) => r.actorUserId).filter((id): id is number => id != null))];
+  const usernamesById: Record<number, string> = {};
+  if (actorIds.length > 0) {
+    const userRows = await db.select({ id: users.id, username: users.username }).from(users).where(inArray(users.id, actorIds));
+    for (const u of userRows) usernamesById[u.id] = u.username;
+  }
+  const list = rows.map((r) => ({
+    ...r,
+    actorUsername: r.actorUserId != null ? usernamesById[r.actorUserId] ?? null : null,
+  }));
   res.json({ auditLog: list });
 });
 
@@ -1158,7 +1166,7 @@ function toCsvRow(values: (string | number | null | undefined)[]): string {
 adminRouter.get('/export/audit-log', async (req: Request, res: Response) => {
   const limit = Math.min(parseInt(req.query.limit as string, 10) || 2000, 5000);
   const format = (req.query.format as string) || 'json';
-  const list = await db
+  const rows = await db
     .select({
       id: auditLog.id,
       timestamp: auditLog.timestamp,
@@ -1166,18 +1174,26 @@ adminRouter.get('/export/audit-log', async (req: Request, res: Response) => {
       entityType: auditLog.entityType,
       entityId: auditLog.entityId,
       actorUserId: auditLog.actorUserId,
-      actorUsername: users.username,
       beforeJson: auditLog.beforeJson,
       afterJson: auditLog.afterJson,
       metadataJson: auditLog.metadataJson,
     })
     .from(auditLog)
-    .leftJoin(users, eq(auditLog.actorUserId, users.id))
     .orderBy(desc(auditLog.timestamp))
     .limit(limit);
+  const actorIds = [...new Set(rows.map((r) => r.actorUserId).filter((id): id is number => id != null))];
+  const usernamesById: Record<number, string> = {};
+  if (actorIds.length > 0) {
+    const userRows = await db.select({ id: users.id, username: users.username }).from(users).where(inArray(users.id, actorIds));
+    for (const u of userRows) usernamesById[u.id] = u.username;
+  }
+  const list = rows.map((r) => ({
+    ...r,
+    actorUsername: r.actorUserId != null ? usernamesById[r.actorUserId] ?? null : null,
+  }));
   if (format === 'csv') {
     const header = ['id', 'timestamp', 'actor_user_id', 'actor_username', 'action_type', 'entity_type', 'entity_id', 'before_json', 'after_json', 'metadata_json'];
-    const rows = list.map((e) => [
+    const csvRows = list.map((e) => [
       e.id,
       e.timestamp instanceof Date ? e.timestamp.toISOString() : e.timestamp,
       e.actorUserId,
@@ -1189,7 +1205,7 @@ adminRouter.get('/export/audit-log', async (req: Request, res: Response) => {
       e.afterJson ? JSON.stringify(e.afterJson) : '',
       e.metadataJson ? JSON.stringify(e.metadataJson) : '',
     ]);
-    const csv = [toCsvRow(header), ...rows.map((r) => toCsvRow(r))].join('\n');
+    const csv = [toCsvRow(header), ...csvRows.map((r) => toCsvRow(r))].join('\n');
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', 'attachment; filename=audit-log.csv');
     res.send(csv);

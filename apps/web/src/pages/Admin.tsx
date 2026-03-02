@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Routes, Route, Link, useLocation, useParams, Navigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPost, apiPatch, apiPut, apiDelete, getApiBaseUrl } from '../lib/api';
@@ -942,6 +942,19 @@ function AdminLeagueVotePredictions({
 }) {
   const qc = useQueryClient();
   const [episodeId, setEpisodeId] = useState<number | ''>('');
+  const epId = episodeId === '' ? 0 : Number(episodeId);
+  const [eliminatedContestantIds, setEliminatedContestantIds] = useState<number[]>(() =>
+    epId > 0 ? contestants.filter((c) => c.eliminatedEpisodeId === epId).map((c) => c.id) : []
+  );
+  useEffect(() => {
+    if (epId > 0) setEliminatedContestantIds(contestants.filter((c) => c.eliminatedEpisodeId === epId).map((c) => c.id));
+    else setEliminatedContestantIds([]);
+  }, [epId, contestants]);
+  const toggleEliminated = (contestantId: number) => {
+    setEliminatedContestantIds((prev) =>
+      prev.includes(contestantId) ? prev.filter((id) => id !== contestantId) : [...prev, contestantId]
+    );
+  };
   const { data: votesData } = useQuery({
     queryKey: ['admin-leagues', leagueId, 'votes', episodeId],
     queryFn: () => apiGet<{ votesByUser: { userId: number; username: string; allocations: { contestantId: number; name: string; votes: number }[] }[] }>(
@@ -951,6 +964,18 @@ function AdminLeagueVotePredictions({
   });
   const [editUserId, setEditUserId] = useState<number | ''>('');
   const [allocations, setAllocations] = useState<{ contestantId: number; votes: number }[]>([]);
+
+  const syncVotePoints = useMutation({
+    mutationFn: () =>
+      apiPost<{ ok: boolean; applied: number; votedOutCount: number }>(
+        `/admin/leagues/${leagueId}/episodes/${epId}/apply-vote-points`,
+        { votedOutContestantIds: eliminatedContestantIds }
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin-leagues', leagueId] });
+      qc.invalidateQueries({ queryKey: ['leaderboard'] });
+    },
+  });
 
   const putVotes = useMutation({
     mutationFn: (body: { userId: number; allocations: { contestantId: number; votes: number }[] }) =>
@@ -996,6 +1021,35 @@ function AdminLeagueVotePredictions({
       </div>
       {episodeId !== '' && (
         <>
+          <div className="mb-4 p-3 rounded-lg bg-jungle-50 border border-jungle-200">
+            <p className="text-sm font-medium text-jungle-800 mb-2">Who was voted out this episode?</p>
+            <p className="text-xs text-jungle-600 mb-2">Select the eliminated contestant(s). Then click Sync to award leaderboard points (1 per vote on that contestant).</p>
+            <div className="flex flex-wrap gap-3 mb-2">
+              {contestants.map((c) => (
+                <label key={c.id} className="inline-flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={eliminatedContestantIds.includes(c.id)}
+                    onChange={() => toggleEliminated(c.id)}
+                  />
+                  <span className="text-ocean-800">{c.name}</span>
+                </label>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => syncVotePoints.mutate()}
+              disabled={syncVotePoints.isPending || eliminatedContestantIds.length === 0}
+              className="px-3 py-1.5 rounded-lg bg-jungle-600 text-white text-sm font-medium hover:bg-jungle-700 disabled:opacity-50 disabled:pointer-events-none"
+            >
+              {syncVotePoints.isPending ? 'Syncing…' : 'Sync vote points to leaderboard'}
+            </button>
+            {syncVotePoints.isSuccess && syncVotePoints.data && (
+              <span className="ml-2 text-sm text-jungle-700">
+                Synced: {syncVotePoints.data.applied} user(s) awarded for {syncVotePoints.data.votedOutCount} eliminated.
+              </span>
+            )}
+          </div>
           <table className="w-full text-sm border-collapse mb-4">
             <thead>
               <tr className="border-b border-sand-300">
