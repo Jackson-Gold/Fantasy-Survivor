@@ -941,11 +941,9 @@ function AdminLeagueVotePredictions({
   contestants: Contestant[];
 }) {
   const qc = useQueryClient();
-  const [episodeId, setEpisodeId] = useState<number | ''>('');
+  const [episodeId, setEpisodeId] = useState<string>('');
   const epId = episodeId === '' ? 0 : Number(episodeId);
-  const [eliminatedContestantIds, setEliminatedContestantIds] = useState<number[]>(() =>
-    epId > 0 ? contestants.filter((c) => c.eliminatedEpisodeId === epId).map((c) => c.id) : []
-  );
+  const [eliminatedContestantIds, setEliminatedContestantIds] = useState<number[]>([]);
   useEffect(() => {
     if (epId > 0) setEliminatedContestantIds(contestants.filter((c) => c.eliminatedEpisodeId === epId).map((c) => c.id));
     else setEliminatedContestantIds([]);
@@ -979,7 +977,7 @@ function AdminLeagueVotePredictions({
 
   const putVotes = useMutation({
     mutationFn: (body: { userId: number; allocations: { contestantId: number; votes: number }[] }) =>
-      apiPut(`/admin/leagues/${leagueId}/episodes/${Number(episodeId)}/votes`, body),
+      apiPut(`/admin/leagues/${leagueId}/episodes/${episodeId}/votes`, body),
     onSuccess: () => {
       setEditUserId('');
       qc.invalidateQueries({ queryKey: ['admin-leagues', leagueId, 'votes', episodeId] });
@@ -1006,50 +1004,70 @@ function AdminLeagueVotePredictions({
   return (
     <div className="card-tribal p-4">
       <h3 className="font-semibold text-ocean-800 mb-3">Vote predictions</h3>
-      <div className="mb-3">
-        <label className="block text-sm font-medium text-ocean-700 mb-1">Episode</label>
-        <select
-          value={episodeId}
-          onChange={(e) => { setEpisodeId(e.target.value === '' ? '' : Number(e.target.value)); setEditUserId(''); }}
-          className="input-tribal max-w-xs"
-        >
-          <option value="">—</option>
-          {episodes.map((ep) => (
-            <option key={ep.id} value={ep.id}>Ep {ep.episodeNumber} {ep.title ? `— ${ep.title}` : ''}</option>
-          ))}
-        </select>
-      </div>
-      {episodeId !== '' && (
-        <>
-          <div className="mb-4 p-3 rounded-lg bg-jungle-50 border border-jungle-200">
+
+      {/* Sync vote points — always visible at top */}
+      <div className="mb-6 p-4 rounded-xl bg-jungle-50 border-2 border-jungle-300 shadow-sm">
+        <h4 className="text-base font-semibold text-jungle-900 mb-2">Sync vote points to leaderboard</h4>
+        <p className="text-sm text-jungle-700 mb-3">
+          Choose the episode and who was voted out. Click Sync to award each user 1 point per vote they placed on the eliminated contestant(s).
+        </p>
+        <div className="mb-3">
+          <label className="block text-sm font-medium text-jungle-800 mb-1">Episode</label>
+          <select
+            value={episodeId}
+            onChange={(e) => { setEpisodeId(e.target.value); setEditUserId(''); }}
+            className="input-tribal min-w-[200px] bg-white"
+          >
+            <option value="">— Select episode —</option>
+            {episodes.map((ep) => (
+              <option key={ep.id} value={String(ep.id)}>Ep {ep.episodeNumber} {ep.title ? `— ${ep.title}` : ''}</option>
+            ))}
+          </select>
+        </div>
+        {episodeId !== '' && (
+          <>
             <p className="text-sm font-medium text-jungle-800 mb-2">Who was voted out this episode?</p>
-            <p className="text-xs text-jungle-600 mb-2">Select the eliminated contestant(s). Then click Sync to award leaderboard points (1 per vote on that contestant).</p>
-            <div className="flex flex-wrap gap-3 mb-2">
+            <div className="flex flex-wrap gap-4 mb-3">
               {contestants.map((c) => (
-                <label key={c.id} className="inline-flex items-center gap-2 cursor-pointer">
+                <label key={c.id} className="inline-flex items-center gap-2 cursor-pointer rounded-lg px-3 py-1.5 bg-white border border-jungle-200 hover:border-jungle-400">
                   <input
                     type="checkbox"
                     checked={eliminatedContestantIds.includes(c.id)}
                     onChange={() => toggleEliminated(c.id)}
+                    className="w-4 h-4 accent-jungle-600"
                   />
-                  <span className="text-ocean-800">{c.name}</span>
+                  <span className="text-ocean-900">{c.name}</span>
                 </label>
               ))}
             </div>
-            <button
-              type="button"
-              onClick={() => syncVotePoints.mutate()}
-              disabled={syncVotePoints.isPending || eliminatedContestantIds.length === 0}
-              className="px-3 py-1.5 rounded-lg bg-jungle-600 text-white text-sm font-medium hover:bg-jungle-700 disabled:opacity-50 disabled:pointer-events-none"
-            >
-              {syncVotePoints.isPending ? 'Syncing…' : 'Sync vote points to leaderboard'}
-            </button>
-            {syncVotePoints.isSuccess && syncVotePoints.data && (
-              <span className="ml-2 text-sm text-jungle-700">
-                Synced: {syncVotePoints.data.applied} user(s) awarded for {syncVotePoints.data.votedOutCount} eliminated.
-              </span>
-            )}
-          </div>
+            <div className="flex items-center gap-3 flex-wrap">
+              <button
+                type="button"
+                onClick={() => syncVotePoints.mutate()}
+                disabled={syncVotePoints.isPending || eliminatedContestantIds.length === 0}
+                className="px-4 py-2 rounded-lg bg-jungle-600 text-white font-medium hover:bg-jungle-700 disabled:opacity-50 disabled:pointer-events-none"
+              >
+                {syncVotePoints.isPending ? 'Syncing…' : 'Sync vote points to leaderboard'}
+              </button>
+              {eliminatedContestantIds.length === 0 && episodeId !== '' && (
+                <span className="text-amber-700 text-sm">Select at least one eliminated contestant.</span>
+              )}
+              {syncVotePoints.isSuccess && syncVotePoints.data && (
+                <span className="text-jungle-700 text-sm font-medium">
+                  Done: {syncVotePoints.data.applied} user(s) awarded for {syncVotePoints.data.votedOutCount} eliminated.
+                </span>
+              )}
+            </div>
+          </>
+        )}
+        {episodeId === '' && episodes.length > 0 && (
+          <p className="text-sm text-jungle-600">Select an episode above to set who was voted out and sync points.</p>
+        )}
+      </div>
+
+      {/* Per-episode vote allocations table (same episode as above) */}
+      {episodeId !== '' && (
+        <>
           <table className="w-full text-sm border-collapse mb-4">
             <thead>
               <tr className="border-b border-sand-300">
