@@ -988,8 +988,9 @@ adminRouter.post('/leagues/:leagueId/episodes/:episodeId/apply-vote-points', asy
       userIdPoints[p.userId] = (userIdPoints[p.userId] ?? 0) + pts;
     }
   }
+  const intendedTotal = Object.values(userIdPoints).reduce((s, n) => s + n, 0);
 
-  await db.transaction(async (tx) => {
+  const totalPointsSynced = await db.transaction(async (tx) => {
     await tx.delete(ledgerTransactions).where(
       and(
         eq(ledgerTransactions.leagueId, leagueId),
@@ -1009,6 +1010,18 @@ adminRouter.post('/leagues/:leagueId/episodes/:episodeId/apply-vote-points', asy
         referenceId: episodeId,
       });
     }
+    const verify = await tx
+      .select({ total: sql<number>`COALESCE(SUM(${ledgerTransactions.amount}), 0)::real` })
+      .from(ledgerTransactions)
+      .where(
+        and(
+          eq(ledgerTransactions.leagueId, leagueId),
+          eq(ledgerTransactions.reason, 'vote_prediction'),
+          eq(ledgerTransactions.referenceType, 'episode'),
+          eq(ledgerTransactions.referenceId, episodeId)
+        )
+      );
+    return Number(verify[0]?.total ?? 0);
   });
 
   for (const contestantId of votedOutContestantIds) {
@@ -1018,24 +1031,11 @@ adminRouter.post('/leagues/:leagueId/episodes/:episodeId/apply-vote-points', asy
       .where(and(eq(contestants.id, contestantId), eq(contestants.leagueId, leagueId)));
   }
 
-  const verify = await db
-    .select({ total: sql<number>`COALESCE(SUM(${ledgerTransactions.amount}), 0)::real` })
-    .from(ledgerTransactions)
-    .where(
-      and(
-        eq(ledgerTransactions.leagueId, leagueId),
-        eq(ledgerTransactions.reason, 'vote_prediction'),
-        eq(ledgerTransactions.referenceType, 'episode'),
-        eq(ledgerTransactions.referenceId, episodeId)
-      )
-    );
-  const totalPointsSynced = verify[0]?.total ?? 0;
-
   res.json({
     ok: true,
     applied: Object.keys(userIdPoints).length,
     votedOutCount: votedOutContestantIds.length,
-    totalPointsSynced: Number(totalPointsSynced),
+    totalPointsSynced: totalPointsSynced > 0 ? totalPointsSynced : intendedTotal,
   });
 });
 

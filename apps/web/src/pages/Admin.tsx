@@ -978,7 +978,7 @@ function AdminLeagueVotePredictions({
 
   const putVotes = useMutation({
     mutationFn: (body: { userId: number; allocations: { contestantId: number; votes: number }[] }) =>
-      apiPut(`/admin/leagues/${leagueId}/episodes/${episodeId}/votes`, body),
+      apiPut(`/admin/leagues/${leagueId}/episodes/${epId}/votes`, body),
     onSuccess: () => {
       setEditUserId('');
       qc.invalidateQueries({ queryKey: ['admin-leagues', leagueId, 'votes', episodeId] });
@@ -1115,7 +1115,12 @@ function AdminLeagueVotePredictions({
                   type="button"
                   className="btn-primary"
                   disabled={total !== defaultVoteTotal || putVotes.isPending}
-                  onClick={() => putVotes.mutate({ userId: editUserId, allocations })}
+                  onClick={() =>
+                    putVotes.mutate({
+                      userId: Number(editUserId),
+                      allocations: allocations.map((a) => ({ contestantId: a.contestantId, votes: Number(a.votes) })),
+                    })
+                  }
                 >
                   Save
                 </button>
