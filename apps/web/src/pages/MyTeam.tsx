@@ -3,9 +3,30 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPost, apiDelete } from '../lib/api';
 import { useCurrentLeague } from '../hooks/useCurrentLeague';
 import { ContestantAvatar } from '../components/ContestantAvatar';
+import FunFacts from '../components/FunFacts';
 
 type RosterItem = { id: number; contestantId: number; name: string; status: string };
 type Contestant = { id: number; name: string; status: string };
+
+type ContestantStats = {
+  contestantId: number;
+  name: string;
+  status: string;
+  individualImmunityWins: number;
+  tribeRewardWins: number;
+  tribeImmunityWins: number;
+  idolFound: number;
+  idolPlayed: number;
+  survivedTribal: number;
+  eliminated: number;
+};
+
+type EpisodePoints = {
+  episodeId: number;
+  episodeNumber: number;
+  title: string | null;
+  pointsByUser: { userId: number; username: string; points: number }[];
+};
 
 export default function MyTeam() {
   const { leagueId } = useParams<{ leagueId: string }>();
@@ -24,7 +45,38 @@ export default function MyTeam() {
     queryFn: () => apiGet<{ leaderboard: { userId: number; scoring_event: number; total: number }[] }>(`/leaderboard/${id}/breakdown`),
     enabled: id > 0,
   });
-  const myBreakdown = breakdownData?.leaderboard?.find((r) => r.userId === me?.user?.id);
+  const leaderboardOrder = breakdownData?.leaderboard ?? [];
+  const myBreakdown = leaderboardOrder.find((r) => r.userId === me?.user?.id);
+  const myRank = myBreakdown ? leaderboardOrder.findIndex((r) => r.userId === me?.user?.id) + 1 : null;
+
+  const { data: statsData } = useQuery({
+    queryKey: ['leagues', id, 'stats'],
+    queryFn: () => apiGet<{ contestants: ContestantStats[] }>(`/leagues/${id}/stats`),
+    enabled: id > 0,
+  });
+  const statsByContestant = (statsData?.contestants ?? []).reduce(
+    (acc, c) => {
+      acc[c.contestantId] = c;
+      return acc;
+    },
+    {} as Record<number, ContestantStats>
+  );
+
+  const { data: byEpisodeData } = useQuery({
+    queryKey: ['leaderboard', id, 'by-episode'],
+    queryFn: () => apiGet<{ episodes: EpisodePoints[] }>(`/leaderboard/${id}/by-episode`),
+    enabled: id > 0,
+  });
+  const myPointsByEpisode = (() => {
+    const epList = byEpisodeData?.episodes ?? [];
+    const myId = me?.user?.id;
+    if (myId == null) return [];
+    return epList.map((ep) => ({
+      episodeNumber: ep.episodeNumber,
+      title: ep.title,
+      points: ep.pointsByUser.find((u) => u.userId === myId)?.points ?? 0,
+    }));
+  })();
 
   const { data: teamData, isLoading } = useQuery({
     queryKey: ['team', id],
@@ -80,33 +132,78 @@ export default function MyTeam() {
         </div>
       ) : (
         <>
-          <div className="card-tribal p-4 mb-4 grid gap-3 sm:grid-cols-2">
+          <div className="card-tribal p-4 mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <div>
-              <h3 className="text-sm font-medium text-ocean-700">Roster points this season</h3>
+              <h3 className="text-sm font-medium text-ocean-700">Total points</h3>
+              <p className="text-xl font-bold text-ocean-900">{myBreakdown != null ? Number(myBreakdown.total).toFixed(0) : '—'}</p>
+              <p className="text-sand-600 text-xs">All categories</p>
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-ocean-700">Roster points</h3>
               <p className="text-xl font-bold text-ocean-900">{myBreakdown != null ? Number(myBreakdown.scoring_event).toFixed(0) : '—'}</p>
-              <p className="text-sand-600 text-xs">Points from your team&apos;s outcomes</p>
+              <p className="text-sand-600 text-xs">From team outcomes</p>
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-ocean-700">Leaderboard rank</h3>
+              <p className="text-xl font-bold text-ocean-900">
+                {myRank != null ? `#${myRank} of ${leaderboardOrder.length}` : '—'}
+              </p>
+              <p className="text-sand-600 text-xs">Current standing</p>
             </div>
             <div>
               <h3 className="text-sm font-medium text-ocean-700">Roster status</h3>
               <p className="text-ocean-900">
-                {activeCount} active{eliminatedCount > 0 ? `, ${eliminatedCount} eliminated` : ''}
+                {activeCount} active{eliminatedCount > 0 ? `, ${eliminatedCount} out` : ''}
               </p>
             </div>
           </div>
+          {myPointsByEpisode.length > 0 && (
+            <div className="card-tribal p-4 mb-4">
+              <h3 className="text-sm font-medium text-ocean-700 mb-2">Points by episode</h3>
+              <div className="flex flex-wrap gap-3">
+                {myPointsByEpisode.map((ep) => (
+                  <span key={ep.episodeNumber} className="inline-flex items-center gap-1.5 rounded-full bg-ocean-100 px-2.5 py-0.5 text-sm text-ocean-800">
+                    <span className="font-medium">Ep {ep.episodeNumber}</span>
+                    <span>{Number(ep.points).toFixed(0)} pts</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
           <p className="text-sand-500 text-xs mb-4">Lock is Wednesday 8:00 PM ET. Rosters lock each week until the next episode.</p>
 
       <div className="card-tribal p-6 mb-6">
         <h2 className="font-semibold text-ocean-800 mb-3">Your roster (2–3 contestants)</h2>
         <ul className="space-y-3">
-          {roster.map((r) => (
-            <li key={r.id} className="flex items-center gap-3">
+          {roster.map((r) => {
+            const stats = statsByContestant[r.contestantId];
+            const isOut = r.status !== 'active';
+            return (
+            <li key={r.id} className={`flex items-center gap-3 ${isOut ? 'opacity-75' : ''}`}>
               <ContestantAvatar name={r.name} size="lg" />
               <div className="flex-1">
                 <span className="font-medium text-ocean-900">{r.name}</span>
-                {r.status !== 'active' && (
-                  <span className="text-ocean-600 text-sm ml-2">({r.status})</span>
+                {isOut && (
+                  <span className="text-ember-600 text-sm ml-2 font-medium">(out)</span>
                 )}
-                <p className="text-sand-600 text-sm mt-0.5">Stats coming soon</p>
+                {stats ? (
+                  <div className="text-sand-600 text-sm mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
+                    {stats.individualImmunityWins > 0 && <span>Individual immunity: {stats.individualImmunityWins}</span>}
+                    {(stats.tribeRewardWins > 0 || stats.tribeImmunityWins > 0) && (
+                      <span>Tribe wins: Rwd {stats.tribeRewardWins} / Imm {stats.tribeImmunityWins}</span>
+                    )}
+                    {(stats.idolFound > 0 || stats.idolPlayed > 0) && (
+                      <span>Idols: found {stats.idolFound}, played {stats.idolPlayed}</span>
+                    )}
+                    {stats.survivedTribal > 0 && <span>Survived tribal: {stats.survivedTribal}</span>}
+                    {stats.eliminated > 0 && <span className="text-ember-600">Eliminated</span>}
+                    {!stats.individualImmunityWins && !stats.tribeRewardWins && !stats.tribeImmunityWins && !stats.idolFound && !stats.idolPlayed && stats.survivedTribal === 0 && stats.eliminated === 0 && (
+                      <span>No stats yet</span>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sand-600 text-sm mt-0.5">Loading stats…</p>
+                )}
               </div>
               {isAdmin && !teamData.locked && roster.length > 2 && (
                 <button
@@ -117,7 +214,8 @@ export default function MyTeam() {
                 </button>
               )}
             </li>
-          ))}
+          );
+          })}
         </ul>
         {isAdmin && !teamData.locked && roster.length < 3 && available.length > 0 && (
           <div className="mt-4">
@@ -137,6 +235,9 @@ export default function MyTeam() {
           </div>
         )}
       </div>
+          <div className="mt-6">
+            <FunFacts />
+          </div>
         </>
       )}
     </div>

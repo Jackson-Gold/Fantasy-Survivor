@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '../lib/api';
 import { useCurrentLeague } from '../hooks/useCurrentLeague';
 import { UserAvatar } from '../components/UserAvatar';
+import FunFacts from '../components/FunFacts';
 
 type Row = { userId: number; username: string; avatarUrl?: string | null; total: number };
 
@@ -15,10 +16,17 @@ type BreakdownRow = Row & {
   adjustment: number;
 };
 
+type EpisodePoints = {
+  episodeId: number;
+  episodeNumber: number;
+  title: string | null;
+  pointsByUser: { userId: number; username: string; points: number }[];
+};
+
 export default function Leaderboard() {
   const { leagueId } = useParams<{ leagueId: string }>();
   const id = parseInt(leagueId ?? '0', 10);
-  const [tab, setTab] = useState<'overall' | 'category'>('overall');
+  const [tab, setTab] = useState<'overall' | 'category' | 'episode'>('overall');
   const { league: currentLeague, isLoading: leagueLoading } = useCurrentLeague();
 
   const { data, isLoading } = useQuery({
@@ -32,6 +40,13 @@ export default function Leaderboard() {
     queryFn: () => apiGet<{ leaderboard: BreakdownRow[] }>(`/leaderboard/${id}/breakdown`),
     enabled: id > 0 && tab === 'category',
   });
+
+  const { data: byEpisodeData, isLoading: byEpisodeLoading } = useQuery({
+    queryKey: ['leaderboard', id, 'by-episode'],
+    queryFn: () => apiGet<{ episodes: EpisodePoints[] }>(`/leaderboard/${id}/by-episode`),
+    enabled: id > 0 && tab === 'episode',
+  });
+  const episodes = byEpisodeData?.episodes ?? [];
 
   if (!leagueId || id <= 0) return <div className="py-8">Invalid league.</div>;
   if (leagueLoading) return <div className="py-8">Loading…</div>;
@@ -66,6 +81,15 @@ export default function Leaderboard() {
           }`}
         >
           By category
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab('episode')}
+          className={`px-4 py-2 font-medium text-sm rounded-t-lg transition-colors ${
+            tab === 'episode' ? 'bg-ocean-800 text-white' : 'text-ocean-700 hover:bg-sand-200'
+          }`}
+        >
+          By episode
         </button>
       </div>
 
@@ -140,6 +164,49 @@ export default function Leaderboard() {
           )}
         </>
       )}
+
+      {tab === 'episode' && (
+        <>
+          {byEpisodeLoading ? (
+            <div className="py-8 text-ocean-600">Loading…</div>
+          ) : episodes.length === 0 ? (
+            <div className="card-tribal p-6 text-center text-ocean-600">No episode data yet.</div>
+          ) : (
+            <div className="space-y-6">
+              {episodes.map((ep) => (
+                <div key={ep.episodeId} className="card-tribal overflow-hidden">
+                  <h3 className="bg-ocean-100 px-4 py-2 font-semibold text-ocean-900">
+                    Episode {ep.episodeNumber}
+                    {ep.title ? ` — ${ep.title}` : ''}
+                  </h3>
+                  <table className="w-full">
+                    <thead className="bg-ocean-800 text-white">
+                      <tr>
+                        <th className="text-left p-3">#</th>
+                        <th className="text-left p-3">Player</th>
+                        <th className="text-right p-3">Points</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ep.pointsByUser.map((u, i) => (
+                        <tr key={u.userId} className="border-t border-sand-200">
+                          <td className="p-3">{i + 1}</td>
+                          <td className="p-3 font-medium">{u.username}</td>
+                          <td className="p-3 text-right">{Number(u.points).toFixed(0)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      <section className="mt-10">
+        <FunFacts />
+      </section>
     </div>
   );
 }

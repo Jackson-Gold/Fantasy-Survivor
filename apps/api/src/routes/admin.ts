@@ -214,6 +214,7 @@ const patchLeagueBody = z.object({
   seasonName: z.string().optional(),
   inviteCode: z.string().max(32).optional(),
   regenerateInviteCode: z.boolean().optional(),
+  voteTotal: z.number().int().min(1).max(100).optional(),
 });
 adminRouter.patch('/leagues/:id', async (req: Request, res: Response) => {
   const id = parseInt(req.params.id, 10);
@@ -227,9 +228,10 @@ adminRouter.patch('/leagues/:id', async (req: Request, res: Response) => {
     res.status(404).json({ error: 'League not found' });
     return;
   }
-  const updates: { name?: string; seasonName?: string; inviteCode?: string } = {};
+  const updates: { name?: string; seasonName?: string; inviteCode?: string; voteTotal?: number } = {};
   if (body.data.name !== undefined) updates.name = body.data.name;
   if (body.data.seasonName !== undefined) updates.seasonName = body.data.seasonName;
+  if (body.data.voteTotal !== undefined) updates.voteTotal = body.data.voteTotal;
   if (body.data.regenerateInviteCode || body.data.inviteCode !== undefined) {
     updates.inviteCode = body.data.inviteCode ?? generateInviteCode();
     if (!body.data.inviteCode) {
@@ -384,9 +386,11 @@ adminRouter.put('/leagues/:leagueId/episodes/:episodeId/votes', async (req: Requ
     res.status(400).json({ error: 'Invalid request', details: body.success ? undefined : body.error.flatten() });
     return;
   }
+  const [league] = await db.select({ voteTotal: leagues.voteTotal }).from(leagues).where(eq(leagues.id, leagueId));
+  const voteTotal = league?.voteTotal ?? defaultVoteTotal;
   const total = body.data.allocations.reduce((s, a) => s + a.votes, 0);
-  if (total !== defaultVoteTotal) {
-    res.status(400).json({ error: `Total votes must equal ${defaultVoteTotal}` });
+  if (total !== voteTotal) {
+    res.status(400).json({ error: `Total votes must equal ${voteTotal}` });
     return;
   }
   const [member] = await db.select().from(leagueMembers).where(and(eq(leagueMembers.leagueId, leagueId), eq(leagueMembers.userId, body.data.userId)));
@@ -937,7 +941,8 @@ adminRouter.post('/scoring-events', async (req: Request, res: Response) => {
   res.status(201).json(ev);
 });
 
-// Vote-out points: after admin marks who was voted out, award points for correct predictions
+// Vote-out points: after admin marks who was voted out, award points for correct predictions.
+// Idempotent: removes existing vote_prediction ledger entries for this episode before applying.
 adminRouter.post('/leagues/:leagueId/episodes/:episodeId/apply-vote-points', async (req: Request, res: Response) => {
   const leagueId = parseInt(req.params.leagueId, 10);
   const episodeId = parseInt(req.params.episodeId, 10);
@@ -946,6 +951,14 @@ adminRouter.post('/leagues/:leagueId/episodes/:episodeId/apply-vote-points', asy
     res.status(400).json({ error: 'Invalid request' });
     return;
   }
+  await db.delete(ledgerTransactions).where(
+    and(
+      eq(ledgerTransactions.leagueId, leagueId),
+      eq(ledgerTransactions.reason, 'vote_prediction'),
+      eq(ledgerTransactions.referenceType, 'episode'),
+      eq(ledgerTransactions.referenceId, episodeId)
+    )
+  );
   const [rule] = await db
     .select()
     .from(scoringRules)

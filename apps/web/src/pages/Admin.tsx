@@ -319,7 +319,7 @@ function AdminAudit() {
   );
 }
 
-type League = { id: number; name: string; seasonName: string | null; inviteCode: string | null };
+type League = { id: number; name: string; seasonName: string | null; inviteCode: string | null; voteTotal?: number | null };
 type Contestant = { id: number; leagueId: number; name: string; status: string; eliminatedEpisodeId: number | null };
 type Episode = { id: number; leagueId: number; episodeNumber: number; title: string | null; airDate: string; lockAt: string };
 type ScoringRule = { id: number; leagueId: number; actionType: string; points: number };
@@ -354,7 +354,7 @@ function AdminLeagueDetail() {
   });
 
   const patchLeague = useMutation({
-    mutationFn: (body: { name?: string; seasonName?: string; regenerateInviteCode?: boolean }) =>
+    mutationFn: (body: { name?: string; seasonName?: string; regenerateInviteCode?: boolean; voteTotal?: number }) =>
       apiPatch<League>(`/admin/leagues/${leagueId}`, body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['admin-league', leagueId] });
@@ -395,6 +395,24 @@ function AdminLeagueDetail() {
               className="input-tribal"
               placeholder="Season 1"
             />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-ocean-800 mb-1">Vote total per episode</label>
+            <input
+              type="number"
+              min={1}
+              max={100}
+              defaultValue={league.voteTotal ?? 10}
+              onBlur={(e) => {
+                const v = parseInt(e.target.value, 10);
+                if (!Number.isNaN(v) && v >= 1 && v <= 100 && v !== (league.voteTotal ?? 10)) {
+                  patchLeague.mutate({ voteTotal: v });
+                }
+              }}
+              className="input-tribal w-24"
+              placeholder="10"
+            />
+            <p className="text-xs text-sand-600 mt-0.5">Total votes each player must allocate per episode.</p>
           </div>
           <div className="sm:col-span-2 flex items-center gap-2">
             <label className="text-sm font-medium text-ocean-800">Invite code:</label>

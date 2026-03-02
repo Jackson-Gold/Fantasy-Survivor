@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '../lib/api';
 import { getNextLockTime } from '../lib/lock';
 import { useCurrentLeague } from '../hooks/useCurrentLeague';
+import FunFacts from '../components/FunFacts';
 
 type League = { id: number; name: string; seasonName?: string };
 type RosterItem = { id: number; contestantId: number; name: string; status: string };
@@ -303,6 +304,10 @@ export default function Dashboard() {
                 ))}
               </ul>
             )}
+          </section>
+
+          <section className="mt-10 max-w-4xl mx-auto">
+            <FunFacts />
           </section>
         </>
       )}

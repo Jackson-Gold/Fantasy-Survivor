@@ -5,6 +5,7 @@ import { apiGet, apiPost } from '../lib/api';
 import { ContestantAvatar } from '../components/ContestantAvatar';
 import { UserAvatar } from '../components/UserAvatar';
 import { useCurrentLeague } from '../hooks/useCurrentLeague';
+import FunFacts from '../components/FunFacts';
 
 type ActivityEntry = {
   id: number;
@@ -239,6 +240,10 @@ export default function Profile() {
             })}
           </ul>
         )}
+      </section>
+
+      <section className="mt-8">
+        <FunFacts />
       </section>
     </div>
   );

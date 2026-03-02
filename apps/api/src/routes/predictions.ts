@@ -7,6 +7,7 @@ import {
   episodes,
   leagueMembers,
   contestants,
+  leagues,
 } from '../db/schema.js';
 import { eq, and } from 'drizzle-orm';
 import { requireAuth } from '../middleware/auth.js';
@@ -133,6 +134,8 @@ predictionsRouter.get('/votes/:leagueId/:episodeId', async (req: Request, res: R
     res.status(404).json({ error: 'Episode not found' });
     return;
   }
+  const [league] = await db.select({ voteTotal: leagues.voteTotal }).from(leagues).where(eq(leagues.id, leagueId));
+  const voteTotal = league?.voteTotal ?? defaultVoteTotal;
   const locked = isLocked(ep.lockAt);
   const rows = await db
     .select({
@@ -154,7 +157,7 @@ predictionsRouter.get('/votes/:leagueId/:episodeId', async (req: Request, res: R
     locked,
     lockAt: ep.lockAt.toISOString(),
     allocations: rows,
-    voteTotal: defaultVoteTotal,
+    voteTotal,
   });
 });
 
@@ -197,9 +200,11 @@ predictionsRouter.put('/votes/:leagueId/:episodeId', async (req: Request, res: R
     res.status(403).json({ error: 'Predictions are locked for this episode' });
     return;
   }
+  const [league] = await db.select({ voteTotal: leagues.voteTotal }).from(leagues).where(eq(leagues.id, leagueId));
+  const voteTotal = league?.voteTotal ?? defaultVoteTotal;
   const total = parsed.data.allocations.reduce((s, a) => s + a.votes, 0);
-  if (total !== defaultVoteTotal) {
-    res.status(400).json({ error: `Total votes must equal ${defaultVoteTotal}` });
+  if (total !== voteTotal) {
+    res.status(400).json({ error: `Total votes must equal ${voteTotal}` });
     return;
   }
   for (const a of parsed.data.allocations) {

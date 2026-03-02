@@ -5,9 +5,7 @@ import { apiGet, apiPut } from '../lib/api';
 import { useCurrentLeague } from '../hooks/useCurrentLeague';
 import { ContestantAvatar } from '../components/ContestantAvatar';
 
-const VOTE_TOTAL = 10;
-
-type Contestant = { id: number; name: string };
+type Contestant = { id: number; name: string; status?: string };
 type Allocation = { contestantId: number; votes: number; name?: string };
 
 export default function PicksEpisode() {
@@ -46,7 +44,12 @@ export default function PicksEpisode() {
   });
 
   const episode = episodeData?.episodes?.find((e) => e.id === episodeIdNum);
-  const contestants = contestantsData?.contestants ?? [];
+  const allContestants = contestantsData?.contestants ?? [];
+  const contestants = useMemo(
+    () => allContestants.filter((c) => (c as { status?: string }).status !== 'eliminated'),
+    [allContestants]
+  );
+  const voteTotal = votesData?.voteTotal ?? 10;
   const locked = votesData?.locked ?? true;
   const allocationsMap = useMemo(() => {
     const m: Record<number, number> = {};
@@ -67,7 +70,7 @@ export default function PicksEpisode() {
     () => contestants.reduce((s, c) => s + (localVotes[c.id] ?? 0), 0),
     [contestants, localVotes]
   );
-  const pointsRemain = VOTE_TOTAL - currentTotal;
+  const pointsRemain = voteTotal - currentTotal;
 
   const putVotes = useMutation({
     mutationFn: (allocations: { contestantId: number; votes: number }[]) =>
@@ -78,7 +81,7 @@ export default function PicksEpisode() {
   });
 
   const handleSubmit = () => {
-    if (currentTotal !== VOTE_TOTAL) return;
+    if (currentTotal !== voteTotal) return;
     putVotes.mutate(
       contestants.map((c) => ({ contestantId: c.id, votes: localVotes[c.id] ?? 0 }))
     );
@@ -86,7 +89,7 @@ export default function PicksEpisode() {
 
   const setVote = (contestantId: number, votes: number) => {
     if (locked) return;
-    setLocalVotes((prev) => ({ ...prev, [contestantId]: Math.max(0, Math.min(VOTE_TOTAL, votes)) }));
+    setLocalVotes((prev) => ({ ...prev, [contestantId]: Math.max(0, Math.min(voteTotal, votes)) }));
   };
 
   if (!leagueId || leagueIdNum <= 0 || !episodeId || episodeIdNum <= 0)
@@ -121,7 +124,7 @@ export default function PicksEpisode() {
       )}
 
       <p className="text-ocean-600 text-sm mb-4">
-        Allocate {VOTE_TOTAL} points across contestants. How likely is each survivor to go home?
+        Allocate {voteTotal} votes across active contestants. How likely is each to be voted out?
       </p>
 
       <div className="card-tribal divide-y divide-sand-200">
@@ -142,7 +145,7 @@ export default function PicksEpisode() {
               <div className="flex items-center gap-2">
                 {!locked && (
                   <div className="flex gap-1">
-                    {Array.from({ length: VOTE_TOTAL + 1 }, (_, i) => (
+                    {Array.from({ length: voteTotal + 1 }, (_, i) => (
                       <button
                         key={i}
                         type="button"
@@ -171,14 +174,14 @@ export default function PicksEpisode() {
           <button
             type="button"
             onClick={handleSubmit}
-            disabled={currentTotal !== VOTE_TOTAL || putVotes.isPending}
+            disabled={currentTotal !== voteTotal || putVotes.isPending}
             className="btn-primary disabled:opacity-70"
           >
             {putVotes.isPending ? 'Saving…' : 'Submit'}
           </button>
-          {currentTotal !== VOTE_TOTAL && (
+          {currentTotal !== voteTotal && (
             <span className="text-amber-700 text-sm">
-              Total must equal {VOTE_TOTAL}. Current: {currentTotal}.
+              Total must equal {voteTotal}. Current: {currentTotal}.
             </span>
           )}
           {putVotes.isError && (

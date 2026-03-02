@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { db } from '../db/index.js';
-import { leagues, leagueMembers, contestants, episodes, teams, winnerPicks, votePredictions, auditLog, users } from '../db/schema.js';
+import { leagues, leagueMembers, contestants, episodes, teams, winnerPicks, votePredictions, auditLog, users, scoringEvents } from '../db/schema.js';
 import { eq, and, asc, desc, inArray, sql } from 'drizzle-orm';
 import { requireAuth } from '../middleware/auth.js';
 import { logAudit } from '../lib/audit.js';
@@ -261,6 +261,80 @@ leaguesRouter.get('/current', async (req: Request, res: Response) => {
   res.json({ league: firstLeague });
 });
 
+leaguesRouter.get('/:id/stats', async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id, 10);
+  if (Number.isNaN(id)) {
+    res.status(400).json({ error: 'Invalid league id' });
+    return;
+  }
+  const userId = req.user!.id;
+  const [member] = await db
+    .select()
+    .from(leagueMembers)
+    .where(and(eq(leagueMembers.leagueId, id), eq(leagueMembers.userId, userId)));
+  if (!member) {
+    res.status(404).json({ error: 'League not found' });
+    return;
+  }
+  const contestantList = await db.select().from(contestants).where(eq(contestants.leagueId, id));
+  const events = await db
+    .select({ contestantId: scoringEvents.contestantId, actionType: scoringEvents.actionType })
+    .from(scoringEvents)
+    .where(eq(scoringEvents.leagueId, id));
+  const statsByContestant: Record<
+    number,
+    { individualImmunityWins: number; tribeRewardWins: number; tribeImmunityWins: number; idolFound: number; idolPlayed: number; survivedTribal: number; eliminated: number }
+  > = {};
+  for (const c of contestantList) {
+    statsByContestant[c.id] = {
+      individualImmunityWins: 0,
+      tribeRewardWins: 0,
+      tribeImmunityWins: 0,
+      idolFound: 0,
+      idolPlayed: 0,
+      survivedTribal: 0,
+      eliminated: 0,
+    };
+  }
+  for (const e of events) {
+    if (e.contestantId == null) continue;
+    const s = statsByContestant[e.contestantId];
+    if (!s) continue;
+    switch (e.actionType) {
+      case 'individual_immunity':
+        s.individualImmunityWins++;
+        break;
+      case 'tribe_reward_win':
+        s.tribeRewardWins++;
+        break;
+      case 'tribe_immunity_win':
+        s.tribeImmunityWins++;
+        break;
+      case 'idol_found':
+        s.idolFound++;
+        break;
+      case 'idol_played':
+        s.idolPlayed++;
+        break;
+      case 'survived_tribal':
+        s.survivedTribal++;
+        break;
+      case 'eliminated':
+        s.eliminated++;
+        break;
+      default:
+        break;
+    }
+  }
+  const contestantsWithStats = contestantList.map((c) => ({
+    contestantId: c.id,
+    name: c.name,
+    status: c.status,
+    ...statsByContestant[c.id],
+  }));
+  res.json({ contestants: contestantsWithStats });
+});
+
 leaguesRouter.get('/:id', async (req: Request, res: Response) => {
   const id = parseInt(req.params.id, 10);
   if (Number.isNaN(id)) {
@@ -273,6 +347,7 @@ leaguesRouter.get('/:id', async (req: Request, res: Response) => {
       id: leagues.id,
       name: leagues.name,
       seasonName: leagues.seasonName,
+      voteTotal: leagues.voteTotal,
     })
     .from(leagues)
     .innerJoin(leagueMembers, eq(leagues.id, leagueMembers.leagueId))

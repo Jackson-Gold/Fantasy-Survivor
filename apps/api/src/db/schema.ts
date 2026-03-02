@@ -28,6 +28,7 @@ export const leagues = pgTable('leagues', {
   name: varchar('name', { length: 256 }).notNull(),
   seasonName: varchar('season_name', { length: 256 }),
   inviteCode: varchar('invite_code', { length: 32 }).unique(),
+  voteTotal: integer('vote_total').default(10),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
