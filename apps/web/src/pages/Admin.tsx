@@ -667,6 +667,18 @@ function AdminLeagueOutcomes({
     setEventRows((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const syncVotePoints = useMutation({
+    mutationFn: () =>
+      apiPost<{ ok: boolean; applied: number; votedOutCount: number }>(
+        `/admin/leagues/${leagueId}/episodes/${epId}/apply-vote-points`,
+        {}
+      ),
+    onSuccess: (data) => {
+      setMessage(`Vote points synced: ${data.applied} users awarded (${data.votedOutCount} eliminated).`);
+      qc.invalidateQueries({ queryKey: ['admin-leagues', leagueId] });
+    },
+  });
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const epId = episodeId === '' ? 0 : Number(episodeId);
@@ -727,6 +739,16 @@ function AdminLeagueOutcomes({
               </option>
             ))}
           </select>
+          {epId > 0 && (
+            <button
+              type="button"
+              onClick={() => syncVotePoints.mutate()}
+              disabled={syncVotePoints.isPending}
+              className="ml-2 text-sm text-jungle-600 hover:underline disabled:opacity-50"
+            >
+              {syncVotePoints.isPending ? 'Syncing…' : 'Sync vote points for this episode'}
+            </button>
+          )}
         </div>
         {epId > 0 && (
           <div>

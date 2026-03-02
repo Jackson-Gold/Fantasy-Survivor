@@ -945,15 +945,31 @@ adminRouter.post('/scoring-events', async (req: Request, res: Response) => {
   res.status(201).json(ev);
 });
 
-// Vote-out points: after admin marks who was voted out, award points for correct predictions.
+// Vote-out points: match vote predictions with the person eliminated in that episode;
+// award one point per vote (or scoring rule 'vote_correct') attributed to that person.
 // Idempotent: removes existing vote_prediction ledger entries for this episode before applying.
+// If votedOutContestantIds is empty/omitted, derive from contestants with eliminatedEpisodeId = episodeId.
 adminRouter.post('/leagues/:leagueId/episodes/:episodeId/apply-vote-points', async (req: Request, res: Response) => {
   const leagueId = parseInt(req.params.leagueId, 10);
   const episodeId = parseInt(req.params.episodeId, 10);
-  const body = z.object({ votedOutContestantIds: z.array(z.number().int().positive()) }).safeParse(req.body);
+  const body = z.object({ votedOutContestantIds: z.array(z.number().int().positive()).optional() }).safeParse(req.body);
   if (Number.isNaN(leagueId) || Number.isNaN(episodeId) || !body.success) {
     res.status(400).json({ error: 'Invalid request' });
     return;
+  }
+  let votedOutContestantIds = body.data.votedOutContestantIds ?? [];
+  if (votedOutContestantIds.length === 0) {
+    const eliminated = await db
+      .select({ id: contestants.id })
+      .from(contestants)
+      .where(
+        and(
+          eq(contestants.leagueId, leagueId),
+          eq(contestants.eliminatedEpisodeId, episodeId),
+          eq(contestants.status, 'eliminated')
+        )
+      );
+    votedOutContestantIds = eliminated.map((r) => r.id);
   }
   await db.delete(ledgerTransactions).where(
     and(
@@ -967,12 +983,12 @@ adminRouter.post('/leagues/:leagueId/episodes/:episodeId/apply-vote-points', asy
     .select()
     .from(scoringRules)
     .where(and(eq(scoringRules.leagueId, leagueId), eq(scoringRules.actionType, 'vote_correct')));
-  const pointsPerCorrect = rule?.points ?? 3;
+  const pointsPerCorrect = rule?.points ?? 1;
   const predictions = await db
     .select()
     .from(votePredictions)
     .where(and(eq(votePredictions.leagueId, leagueId), eq(votePredictions.episodeId, episodeId)));
-  const votedOutSet = new Set(body.data.votedOutContestantIds);
+  const votedOutSet = new Set(votedOutContestantIds);
   const userIdPoints: Record<number, number> = {};
   for (const p of predictions) {
     if (votedOutSet.has(p.contestantId)) {
@@ -991,13 +1007,13 @@ adminRouter.post('/leagues/:leagueId/episodes/:episodeId/apply-vote-points', asy
       referenceId: episodeId,
     });
   }
-  for (const contestantId of body.data.votedOutContestantIds) {
+  for (const contestantId of votedOutContestantIds) {
     await db
       .update(contestants)
       .set({ status: 'eliminated', eliminatedEpisodeId: episodeId })
       .where(and(eq(contestants.id, contestantId), eq(contestants.leagueId, leagueId)));
   }
-  res.json({ ok: true, applied: Object.keys(userIdPoints).length });
+  res.json({ ok: true, applied: Object.keys(userIdPoints).length, votedOutCount: votedOutContestantIds.length });
 });
 
 const pointAdjustmentBody = z.object({
