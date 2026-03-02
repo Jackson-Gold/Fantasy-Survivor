@@ -268,7 +268,7 @@ function AdminLeagues() {
 function AdminAudit() {
   const { data } = useQuery({
     queryKey: ['admin-audit'],
-    queryFn: () => apiGet<{ auditLog: { id: number; timestamp: string; actionType: string; entityType: string; actorUserId: number | null }[] }>('/admin/audit-log'),
+    queryFn: () => apiGet<{ auditLog: { id: number; timestamp: string; actionType: string; entityType: string; actorUserId: number | null; actorUsername: string | null }[] }>('/admin/audit-log'),
   });
   const log = data?.auditLog ?? [];
   const apiBase = getApiBaseUrl() || '';
@@ -311,7 +311,7 @@ function AdminAudit() {
       <ul className="space-y-1 text-sm">
         {log.slice(0, 50).map((e) => (
           <li key={e.id} className="text-ocean-700">
-            {new Date(e.timestamp).toISOString()} | {e.actionType} | {e.entityType} | actor: {e.actorUserId ?? '-'}
+            {new Date(e.timestamp).toISOString()} | {e.actionType} | {e.entityType} | by: {e.actorUsername ?? (e.actorUserId != null ? `user#${e.actorUserId}` : '—')}
           </li>
         ))}
       </ul>
@@ -730,7 +730,7 @@ function AdminLeagueOutcomes({
           <select
             value={episodeId}
             onChange={(e) => setEpisodeId(e.target.value === '' ? '' : Number(e.target.value))}
-            className="input-tribal max-w-xs"
+            className="input-tribal max-w-xs block mb-2"
           >
             <option value="">—</option>
             {episodes.map((ep) => (
@@ -740,14 +740,17 @@ function AdminLeagueOutcomes({
             ))}
           </select>
           {epId > 0 && (
-            <button
-              type="button"
-              onClick={() => syncVotePoints.mutate()}
-              disabled={syncVotePoints.isPending}
-              className="ml-2 text-sm text-jungle-600 hover:underline disabled:opacity-50"
-            >
-              {syncVotePoints.isPending ? 'Syncing…' : 'Sync vote points for this episode'}
-            </button>
+            <div className="mt-2">
+              <button
+                type="button"
+                onClick={() => syncVotePoints.mutate()}
+                disabled={syncVotePoints.isPending}
+                className="px-4 py-2 rounded-lg bg-jungle-100 text-jungle-800 font-medium text-sm hover:bg-jungle-200 disabled:opacity-50 transition-colors"
+              >
+                {syncVotePoints.isPending ? 'Syncing…' : 'Sync vote points for this episode'}
+              </button>
+              <p className="text-xs text-sand-600 mt-1">Recalculates leaderboard vote points from eliminated contestants for this episode.</p>
+            </div>
           )}
         </div>
         {epId > 0 && (

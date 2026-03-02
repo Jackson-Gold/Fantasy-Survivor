@@ -17,6 +17,8 @@ type ContestantStats = {
   tribeImmunityWins: number;
   idolFound: number;
   idolPlayed: number;
+  advantageFound?: number;
+  advantagePlayed?: number;
   survivedTribal: number;
   eliminated: number;
 };
@@ -193,29 +195,34 @@ export default function MyTeam() {
                 </div>
                 <h3 className="font-semibold text-ocean-900 mt-3">{r.name}</h3>
                 {stats ? (
-                  <div className="mt-3 w-full grid grid-cols-2 gap-2 text-xs">
-                    <div className="rounded-lg bg-ocean-50 px-2 py-1.5 text-ocean-800">
-                      <span className="text-ocean-500 block">Ind. immunity</span>
-                      <span className="font-semibold">{stats.individualImmunityWins}</span>
+                  <div className="mt-4 w-full grid grid-cols-2 gap-3">
+                    <div className="rounded-xl bg-gradient-to-br from-ocean-100 to-ocean-50 px-3 py-2.5 border border-ocean-200/60">
+                      <span className="text-ocean-600 text-xs font-medium uppercase tracking-wide block">Ind. immunity</span>
+                      <span className="text-ocean-900 text-lg font-bold tabular-nums">{stats.individualImmunityWins}</span>
                     </div>
-                    <div className="rounded-lg bg-jungle-50 px-2 py-1.5 text-jungle-800">
-                      <span className="text-jungle-600 block">Tribe (R/I)</span>
-                      <span className="font-semibold">{stats.tribeRewardWins}/{stats.tribeImmunityWins}</span>
+                    <div className="rounded-xl bg-gradient-to-br from-jungle-100 to-jungle-50 px-3 py-2.5 border border-jungle-200/60">
+                      <span className="text-jungle-600 text-xs font-medium uppercase tracking-wide block">Tribe immunity</span>
+                      <span className="text-jungle-900 text-lg font-bold tabular-nums">{stats.tribeImmunityWins}</span>
                     </div>
-                    <div className="rounded-lg bg-amber-50 px-2 py-1.5 text-amber-800">
-                      <span className="text-amber-600 block">Idols</span>
-                      <span className="font-semibold">F:{stats.idolFound} P:{stats.idolPlayed}</span>
+                    <div className="rounded-xl bg-gradient-to-br from-amber-100 to-amber-50 px-3 py-2.5 border border-amber-200/60">
+                      <span className="text-amber-700 text-xs font-medium uppercase tracking-wide block">Tribe reward</span>
+                      <span className="text-amber-900 text-lg font-bold tabular-nums">{stats.tribeRewardWins}</span>
                     </div>
-                    <div className="rounded-lg bg-sand-100 px-2 py-1.5 text-sand-800">
-                      <span className="text-sand-600 block">Survived</span>
-                      <span className="font-semibold">{stats.survivedTribal}</span>
+                    <div className="rounded-xl bg-gradient-to-br from-violet-100 to-violet-50 px-3 py-2.5 border border-violet-200/60">
+                      <span className="text-violet-600 text-xs font-medium uppercase tracking-wide block">Idols & advantages</span>
+                      <span className="text-violet-900 text-lg font-bold tabular-nums">
+                        {(stats.idolFound ?? 0) + (stats.idolPlayed ?? 0) + (stats.advantageFound ?? 0) + (stats.advantagePlayed ?? 0)}
+                      </span>
                     </div>
-                    <div className="col-span-2 rounded-lg px-2 py-1.5 text-center">
-                      {stats.eliminated > 0 ? (
-                        <span className="text-ember-600 font-medium">Eliminated</span>
-                      ) : (
-                        <span className="text-sand-500">Active</span>
-                      )}
+                    <div className="rounded-xl bg-gradient-to-br from-sand-100 to-sand-50 px-3 py-2.5 border border-sand-200/60">
+                      <span className="text-sand-600 text-xs font-medium uppercase tracking-wide block">Survived tribal</span>
+                      <span className="text-sand-900 text-lg font-bold tabular-nums">{stats.survivedTribal}</span>
+                    </div>
+                    <div className="rounded-xl bg-gradient-to-br from-ember-100 to-ember-50 px-3 py-2.5 border border-ember-200/60">
+                      <span className="text-ember-600 text-xs font-medium uppercase tracking-wide block">Status</span>
+                      <span className={`text-lg font-bold ${stats.eliminated > 0 ? 'text-ember-700' : 'text-jungle-700'}`}>
+                        {stats.eliminated > 0 ? 'Eliminated' : 'Active'}
+                      </span>
                     </div>
                   </div>
                 ) : (

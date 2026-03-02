@@ -283,7 +283,7 @@ leaguesRouter.get('/:id/stats', async (req: Request, res: Response) => {
     .where(eq(scoringEvents.leagueId, id));
   const statsByContestant: Record<
     number,
-    { individualImmunityWins: number; tribeRewardWins: number; tribeImmunityWins: number; idolFound: number; idolPlayed: number; survivedTribal: number; eliminated: number }
+    { individualImmunityWins: number; tribeRewardWins: number; tribeImmunityWins: number; idolFound: number; idolPlayed: number; advantageFound: number; advantagePlayed: number; survivedTribal: number; eliminated: number }
   > = {};
   for (const c of contestantList) {
     statsByContestant[c.id] = {
@@ -292,15 +292,17 @@ leaguesRouter.get('/:id/stats', async (req: Request, res: Response) => {
       tribeImmunityWins: 0,
       idolFound: 0,
       idolPlayed: 0,
+      advantageFound: 0,
+      advantagePlayed: 0,
       survivedTribal: 0,
       eliminated: 0,
     };
   }
-  for (const e of events) {
-    if (e.contestantId == null) continue;
-    const s = statsByContestant[e.contestantId];
+  for (const ev of events) {
+    if (ev.contestantId == null) continue;
+    const s = statsByContestant[ev.contestantId];
     if (!s) continue;
-    switch (e.actionType) {
+    switch (ev.actionType) {
       case 'individual_immunity':
         s.individualImmunityWins++;
         break;
@@ -315,6 +317,12 @@ leaguesRouter.get('/:id/stats', async (req: Request, res: Response) => {
         break;
       case 'idol_played':
         s.idolPlayed++;
+        break;
+      case 'advantage_found':
+        s.advantageFound++;
+        break;
+      case 'advantage_played':
+        s.advantagePlayed++;
         break;
       case 'survived_tribal':
         s.survivedTribal++;

@@ -1117,7 +1117,23 @@ adminRouter.post('/leagues/:leagueId/recompute-leaderboard', async (req: Request
 // ---------- Audit log & ledger (read-only export) ----------
 adminRouter.get('/audit-log', async (req: Request, res: Response) => {
   const limit = Math.min(parseInt(req.query.limit as string, 10) || 100, 500);
-  const list = await db.select().from(auditLog).orderBy(desc(auditLog.timestamp)).limit(limit);
+  const list = await db
+    .select({
+      id: auditLog.id,
+      timestamp: auditLog.timestamp,
+      actionType: auditLog.actionType,
+      entityType: auditLog.entityType,
+      entityId: auditLog.entityId,
+      actorUserId: auditLog.actorUserId,
+      actorUsername: users.username,
+      beforeJson: auditLog.beforeJson,
+      afterJson: auditLog.afterJson,
+      metadataJson: auditLog.metadataJson,
+    })
+    .from(auditLog)
+    .leftJoin(users, eq(auditLog.actorUserId, users.id))
+    .orderBy(desc(auditLog.timestamp))
+    .limit(limit);
   res.json({ auditLog: list });
 });
 
@@ -1142,13 +1158,30 @@ function toCsvRow(values: (string | number | null | undefined)[]): string {
 adminRouter.get('/export/audit-log', async (req: Request, res: Response) => {
   const limit = Math.min(parseInt(req.query.limit as string, 10) || 2000, 5000);
   const format = (req.query.format as string) || 'json';
-  const list = await db.select().from(auditLog).orderBy(desc(auditLog.timestamp)).limit(limit);
+  const list = await db
+    .select({
+      id: auditLog.id,
+      timestamp: auditLog.timestamp,
+      actionType: auditLog.actionType,
+      entityType: auditLog.entityType,
+      entityId: auditLog.entityId,
+      actorUserId: auditLog.actorUserId,
+      actorUsername: users.username,
+      beforeJson: auditLog.beforeJson,
+      afterJson: auditLog.afterJson,
+      metadataJson: auditLog.metadataJson,
+    })
+    .from(auditLog)
+    .leftJoin(users, eq(auditLog.actorUserId, users.id))
+    .orderBy(desc(auditLog.timestamp))
+    .limit(limit);
   if (format === 'csv') {
-    const header = ['id', 'timestamp', 'actor_user_id', 'action_type', 'entity_type', 'entity_id', 'before_json', 'after_json', 'metadata_json'];
+    const header = ['id', 'timestamp', 'actor_user_id', 'actor_username', 'action_type', 'entity_type', 'entity_id', 'before_json', 'after_json', 'metadata_json'];
     const rows = list.map((e) => [
       e.id,
       e.timestamp instanceof Date ? e.timestamp.toISOString() : e.timestamp,
       e.actorUserId,
+      e.actorUsername ?? '',
       e.actionType,
       e.entityType,
       e.entityId,
