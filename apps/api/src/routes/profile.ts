@@ -50,10 +50,21 @@ profileRouter.post('/avatar', async (req: Request, res: Response) => {
     return;
   }
   const ext = mime === 'image/png' ? 'png' : 'jpg';
-  const uploadsDir = getUploadsDir();
   const filename = `avatar-${req.user!.id}-${Date.now()}.${ext}`;
+  let uploadsDir: string;
+  try {
+    uploadsDir = getUploadsDir();
+  } catch {
+    res.status(500).json({ error: 'Avatar storage unavailable' });
+    return;
+  }
   const filepath = path.join(uploadsDir, 'avatars', filename);
-  fs.writeFileSync(filepath, buffer);
+  try {
+    fs.writeFileSync(filepath, buffer);
+  } catch {
+    res.status(500).json({ error: 'Avatar storage unavailable' });
+    return;
+  }
   const relativeUrl = `avatars/${filename}`;
   await db.update(users).set({ avatarUrl: relativeUrl, updatedAt: new Date() }).where(eq(users.id, req.user!.id));
   res.json({ avatar_url: relativeUrl });

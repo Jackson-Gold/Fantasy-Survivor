@@ -418,6 +418,7 @@ function AdminLeagueDetail() {
         <a href="#vote-predictions" className="text-sm text-ocean-700 hover:text-ember-600 hover:underline px-2 py-1 rounded">Picks (Votes)</a>
         <a href="#teams" className="text-sm text-ocean-700 hover:text-ember-600 hover:underline px-2 py-1 rounded">Teams</a>
         <a href="#trades" className="text-sm text-ocean-700 hover:text-ember-600 hover:underline px-2 py-1 rounded">Trades</a>
+        <a href="#adjustments" className="text-sm text-ocean-700 hover:text-ember-600 hover:underline px-2 py-1 rounded">Point adjustments</a>
         <a href="#scoring" className="text-sm text-ocean-700 hover:text-ember-600 hover:underline px-2 py-1 rounded">Scoring</a>
         <a href="#export" className="text-sm text-ocean-700 hover:text-ember-600 hover:underline px-2 py-1 rounded">Export</a>
       </nav>
@@ -429,6 +430,7 @@ function AdminLeagueDetail() {
       <div id="vote-predictions"><AdminLeagueVotePredictions leagueId={leagueId} episodes={episodes} contestants={contestants} /></div>
       <div id="teams"><AdminLeagueRosters leagueId={leagueId} contestants={contestants} /></div>
       <div id="trades"><AdminLeagueTrades leagueId={leagueId} /></div>
+      <div id="adjustments"><AdminLeaguePointAdjustments leagueId={leagueId} /></div>
       <div id="scoring"><AdminLeagueScoringRules leagueId={leagueId} scoringRules={scoringRules} /></div>
       <div id="export"><AdminLeagueExport leagueId={leagueId} /></div>
     </div>
@@ -574,6 +576,8 @@ function AdminLeagueEpisodes({ leagueId, episodes }: { leagueId: number; episode
 
 const OUTCOME_EXCLUDED_ACTIONS = ['vote_correct', 'winner_placement_1', 'winner_placement_2', 'winner_placement_3'];
 
+type OutcomeEvent = { id: number; actionType: string; contestantId: number | null; contestantName: string | null };
+
 function AdminLeagueOutcomes({
   leagueId,
   episodes,
@@ -591,6 +595,33 @@ function AdminLeagueOutcomes({
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const qc = useQueryClient();
+
+  const epId = episodeId === '' ? 0 : Number(episodeId);
+  const { data: outcomesData } = useQuery({
+    queryKey: ['admin-leagues', leagueId, 'outcomes', epId],
+    queryFn: () =>
+      apiGet<{ events: OutcomeEvent[]; votedOutContestantIds: number[] }>(
+        `/admin/leagues/${leagueId}/episodes/${epId}/outcomes`
+      ),
+    enabled: leagueId > 0 && epId > 0,
+  });
+  const existingEvents = outcomesData?.events ?? [];
+  const clearOutcomes = useMutation({
+    mutationFn: () => apiDelete(`/admin/leagues/${leagueId}/episodes/${epId}/outcomes`),
+    onSuccess: () => {
+      setEventRows([]);
+      setVotedOutIds([]);
+      setMessage(null);
+      qc.invalidateQueries({ queryKey: ['admin-leagues', leagueId] });
+    },
+  });
+  const removeEvent = useMutation({
+    mutationFn: (eventId: number) => apiDelete(`/admin/scoring-events/${eventId}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin-leagues', leagueId, 'outcomes', epId] });
+      qc.invalidateQueries({ queryKey: ['admin-leagues', leagueId] });
+    },
+  });
 
   const contestantLevelRules = scoringRules.filter((r) => !OUTCOME_EXCLUDED_ACTIONS.includes(r.actionType));
 
@@ -677,6 +708,41 @@ function AdminLeagueOutcomes({
             ))}
           </select>
         </div>
+        {epId > 0 && (
+          <div>
+            <label className="block text-sm font-medium text-ocean-800 mb-1">Existing outcomes</label>
+            {existingEvents.length === 0 ? (
+              <p className="text-ocean-600 text-sm">No outcomes entered for this episode yet.</p>
+            ) : (
+              <>
+                <ul className="space-y-1 mb-2">
+                  {existingEvents.map((ev) => (
+                    <li key={ev.id} className="flex items-center gap-2 text-sm">
+                      <span className="text-ocean-800">{ev.actionType}</span>
+                      {ev.contestantName != null && <span className="text-ocean-600">— {ev.contestantName}</span>}
+                      <button
+                        type="button"
+                        onClick={() => removeEvent.mutate(ev.id)}
+                        disabled={removeEvent.isPending}
+                        className="text-red-600 hover:underline text-xs"
+                      >
+                        Remove
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                <button
+                  type="button"
+                  onClick={() => clearOutcomes.mutate()}
+                  disabled={clearOutcomes.isPending}
+                  className="text-sm text-ember-600 hover:underline"
+                >
+                  {clearOutcomes.isPending ? 'Clearing…' : 'Clear all and re-enter'}
+                </button>
+              </>
+            )}
+          </div>
+        )}
         <div>
           <label className="block text-sm font-medium text-ocean-800 mb-1">Events (from scoring rules)</label>
           <p className="text-ocean-600 text-xs mb-2">Add events using the action types defined in Scoring rules.</p>
@@ -1141,6 +1207,89 @@ function AdminLeagueExport({ leagueId }: { leagueId: number }) {
         </button>
       </div>
       {recomputeMsg && <p className="text-sm text-ocean-600">{recomputeMsg}</p>}
+    </div>
+  );
+}
+
+function AdminLeaguePointAdjustments({ leagueId }: { leagueId: number }) {
+  const qc = useQueryClient();
+  const [userId, setUserId] = useState<number | ''>('');
+  const [amount, setAmount] = useState<string>('');
+  const [note, setNote] = useState('');
+  const [message, setMessage] = useState<string | null>(null);
+  const { data: winnerPicksData } = useQuery({
+    queryKey: ['admin-leagues', leagueId, 'winner-picks'],
+    queryFn: () => apiGet<{ winnerPicks: { userId: number; username: string }[] }>(`/admin/leagues/${leagueId}/winner-picks`),
+    enabled: leagueId > 0,
+  });
+  const members = winnerPicksData?.winnerPicks ?? [];
+  const submitAdjustment = useMutation({
+    mutationFn: (body: { userId: number; amount: number; note?: string }) =>
+      apiPost(`/admin/leagues/${leagueId}/point-adjustments`, body),
+    onSuccess: () => {
+      setUserId('');
+      setAmount('');
+      setNote('');
+      setMessage('Adjustment applied.');
+      qc.invalidateQueries({ queryKey: ['leaderboard', leagueId] });
+      qc.invalidateQueries({ queryKey: ['admin-leagues', leagueId] });
+    },
+    onError: (err: Error) => setMessage(err.message),
+  });
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const amt = parseFloat(amount);
+    if (userId === '' || Number.isNaN(amt)) {
+      setMessage('Select a user and enter an amount.');
+      return;
+    }
+    setMessage(null);
+    submitAdjustment.mutate({ userId, amount: amt, note: note.trim() || undefined });
+  };
+  return (
+    <div className="card-tribal p-4">
+      <h3 className="font-semibold text-ocean-800 mb-3">Point adjustments</h3>
+      <p className="text-ocean-600 text-sm mb-3">Add or subtract points for a player. These show as &quot;Adjustment&quot; on the leaderboard.</p>
+      <form onSubmit={handleSubmit} className="flex flex-wrap gap-3 items-end">
+        <div>
+          <label className="block text-xs font-medium text-ocean-700 mb-1">User</label>
+          <select
+            value={userId}
+            onChange={(e) => setUserId(e.target.value === '' ? '' : Number(e.target.value))}
+            className="input-tribal min-w-[120px]"
+          >
+            <option value="">—</option>
+            {members.map((m) => (
+              <option key={m.userId} value={m.userId}>{m.username}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-ocean-700 mb-1">Amount</label>
+          <input
+            type="number"
+            step="any"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            placeholder="e.g. 5 or -3"
+            className="input-tribal w-28"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-ocean-700 mb-1">Note (optional)</label>
+          <input
+            type="text"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="Reason"
+            className="input-tribal min-w-[140px]"
+          />
+        </div>
+        <button type="submit" className="btn-primary" disabled={submitAdjustment.isPending}>
+          {submitAdjustment.isPending ? 'Applying…' : 'Apply adjustment'}
+        </button>
+      </form>
+      {message && <p className={`mt-2 text-sm ${message.includes('applied') ? 'text-jungle-700' : 'text-ocean-600'}`}>{message}</p>}
     </div>
   );
 }

@@ -12,6 +12,7 @@ type BreakdownRow = Row & {
   vote_prediction: number;
   winner_pick: number;
   trade: number;
+  adjustment: number;
 };
 
 export default function Leaderboard() {
@@ -111,6 +112,7 @@ export default function Leaderboard() {
                     <th className="text-right p-3">Votes</th>
                     <th className="text-right p-3">Winner</th>
                     <th className="text-right p-3">Trades</th>
+                    <th className="text-right p-3">Adjustment</th>
                     <th className="text-right p-3">Total</th>
                   </tr>
                 </thead>
@@ -128,6 +130,7 @@ export default function Leaderboard() {
                       <td className="p-3 text-right">{Number(r.vote_prediction).toFixed(0)}</td>
                       <td className="p-3 text-right">{Number(r.winner_pick).toFixed(0)}</td>
                       <td className="p-3 text-right">{Number(r.trade).toFixed(0)}</td>
+                      <td className="p-3 text-right">{Number(r.adjustment ?? 0).toFixed(0)}</td>
                       <td className="p-3 text-right font-medium">{Number(r.total).toFixed(0)}</td>
                     </tr>
                   ))}

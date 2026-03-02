@@ -777,6 +777,108 @@ adminRouter.put('/scoring-rules/:id', async (req: Request, res: Response) => {
   res.json({ ok: true });
 });
 
+// ---------- Episode outcomes (get, clear) and scoring events (create, delete) ----------
+adminRouter.get('/leagues/:leagueId/episodes/:episodeId/outcomes', async (req: Request, res: Response) => {
+  const leagueId = parseInt(req.params.leagueId, 10);
+  const episodeId = parseInt(req.params.episodeId, 10);
+  if (Number.isNaN(leagueId) || Number.isNaN(episodeId)) {
+    res.status(400).json({ error: 'Invalid id' });
+    return;
+  }
+  const [ep] = await db.select().from(episodes).where(and(eq(episodes.id, episodeId), eq(episodes.leagueId, leagueId)));
+  if (!ep) {
+    res.status(404).json({ error: 'Episode not found' });
+    return;
+  }
+  const events = await db
+    .select({
+      id: scoringEvents.id,
+      actionType: scoringEvents.actionType,
+      contestantId: scoringEvents.contestantId,
+      name: contestants.name,
+    })
+    .from(scoringEvents)
+    .leftJoin(contestants, and(eq(scoringEvents.contestantId, contestants.id), eq(contestants.leagueId, leagueId)))
+    .where(and(eq(scoringEvents.leagueId, leagueId), eq(scoringEvents.episodeId, episodeId)));
+  const votedOutContestantIds = events
+    .filter((e) => e.actionType === 'eliminated' && e.contestantId != null)
+    .map((e) => e.contestantId as number);
+  res.json({
+    events: events.map((e) => ({ id: e.id, actionType: e.actionType, contestantId: e.contestantId, contestantName: e.name })),
+    votedOutContestantIds,
+  });
+});
+
+adminRouter.delete('/leagues/:leagueId/episodes/:episodeId/outcomes', async (req: Request, res: Response) => {
+  const leagueId = parseInt(req.params.leagueId, 10);
+  const episodeId = parseInt(req.params.episodeId, 10);
+  if (Number.isNaN(leagueId) || Number.isNaN(episodeId)) {
+    res.status(400).json({ error: 'Invalid id' });
+    return;
+  }
+  const [ep] = await db.select().from(episodes).where(and(eq(episodes.id, episodeId), eq(episodes.leagueId, leagueId)));
+  if (!ep) {
+    res.status(404).json({ error: 'Episode not found' });
+    return;
+  }
+  await db.transaction(async (tx) => {
+    const evRows = await tx.select({ id: scoringEvents.id }).from(scoringEvents).where(eq(scoringEvents.episodeId, episodeId));
+    const evIds = evRows.map((r) => r.id);
+    if (evIds.length > 0) {
+      await tx.delete(ledgerTransactions).where(
+        and(
+          eq(ledgerTransactions.leagueId, leagueId),
+          eq(ledgerTransactions.reason, 'scoring_event'),
+          inArray(ledgerTransactions.referenceId, evIds)
+        )
+      );
+    }
+    await tx.delete(ledgerTransactions).where(
+      and(
+        eq(ledgerTransactions.leagueId, leagueId),
+        eq(ledgerTransactions.reason, 'vote_prediction'),
+        eq(ledgerTransactions.referenceType, 'episode'),
+        eq(ledgerTransactions.referenceId, episodeId)
+      )
+    );
+    await tx.delete(votePredictions).where(eq(votePredictions.episodeId, episodeId));
+    await tx.delete(scoringEvents).where(eq(scoringEvents.episodeId, episodeId));
+  });
+  await logAudit({
+    actorUserId: req.user!.id,
+    actionType: 'admin.episode_outcomes.clear',
+    entityType: 'episode',
+    entityId: episodeId,
+    metadataJson: { leagueId },
+  });
+  res.json({ ok: true });
+});
+
+adminRouter.delete('/scoring-events/:id', async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id, 10);
+  if (Number.isNaN(id)) {
+    res.status(400).json({ error: 'Invalid id' });
+    return;
+  }
+  const [ev] = await db.select().from(scoringEvents).where(eq(scoringEvents.id, id));
+  if (!ev) {
+    res.status(404).json({ error: 'Scoring event not found' });
+    return;
+  }
+  await db.delete(ledgerTransactions).where(
+    and(eq(ledgerTransactions.reason, 'scoring_event'), eq(ledgerTransactions.referenceType, 'scoring_event'), eq(ledgerTransactions.referenceId, id))
+  );
+  await db.delete(scoringEvents).where(eq(scoringEvents.id, id));
+  await logAudit({
+    actorUserId: req.user!.id,
+    actionType: 'scoring_event.delete',
+    entityType: 'scoring_event',
+    entityId: id,
+    metadataJson: { leagueId: ev.leagueId },
+  });
+  res.json({ ok: true });
+});
+
 // ---------- Scoring events (admin enters outcomes) ----------
 adminRouter.post('/scoring-events', async (req: Request, res: Response) => {
   const body = z.object({
@@ -873,6 +975,53 @@ adminRouter.post('/leagues/:leagueId/episodes/:episodeId/apply-vote-points', asy
     });
   }
   res.json({ ok: true, applied: Object.keys(userIdPoints).length });
+});
+
+const pointAdjustmentBody = z.object({
+  userId: z.number().int().positive(),
+  amount: z.number(),
+  note: z.string().max(256).optional(),
+});
+adminRouter.post('/leagues/:leagueId/point-adjustments', async (req: Request, res: Response) => {
+  const leagueId = parseInt(req.params.leagueId, 10);
+  if (Number.isNaN(leagueId)) {
+    res.status(400).json({ error: 'Invalid league id' });
+    return;
+  }
+  const parsed = pointAdjustmentBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid body', details: parsed.error.flatten() });
+    return;
+  }
+  const [league] = await db.select().from(leagues).where(eq(leagues.id, leagueId));
+  if (!league) {
+    res.status(404).json({ error: 'League not found' });
+    return;
+  }
+  const [member] = await db.select().from(leagueMembers).where(and(eq(leagueMembers.leagueId, leagueId), eq(leagueMembers.userId, parsed.data.userId)));
+  if (!member) {
+    res.status(400).json({ error: 'User is not a member of this league' });
+    return;
+  }
+  const [row] = await db
+    .insert(ledgerTransactions)
+    .values({
+      leagueId,
+      userId: parsed.data.userId,
+      amount: parsed.data.amount,
+      reason: 'adjustment',
+      referenceType: 'adjustment',
+    })
+    .returning();
+  await logAudit({
+    actorUserId: req.user!.id,
+    actionType: 'admin.point_adjustment',
+    entityType: 'ledger_transaction',
+    entityId: row.id,
+    afterJson: { userId: parsed.data.userId, amount: parsed.data.amount },
+    metadataJson: { leagueId, note: parsed.data.note ?? null },
+  });
+  res.status(201).json({ ok: true, id: row.id });
 });
 
 adminRouter.post('/leagues/:leagueId/recompute-leaderboard', async (req: Request, res: Response) => {

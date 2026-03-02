@@ -50,6 +50,7 @@ type BreakdownRow = {
   vote_prediction: number;
   winner_pick: number;
   trade: number;
+  adjustment: number;
   total: number;
 };
 
@@ -73,6 +74,7 @@ leaderboardRouter.get('/:leagueId/breakdown', async (req: Request, res: Response
       vote_prediction: sql<number>`COALESCE(SUM(CASE WHEN ${ledgerTransactions.reason} = 'vote_prediction' THEN ${ledgerTransactions.amount} ELSE 0 END), 0)::real`.as('vote_prediction'),
       winner_pick: sql<number>`COALESCE(SUM(CASE WHEN ${ledgerTransactions.reason} = 'winner_pick' THEN ${ledgerTransactions.amount} ELSE 0 END), 0)::real`.as('winner_pick'),
       trade: sql<number>`COALESCE(SUM(CASE WHEN ${ledgerTransactions.reason} = 'trade' THEN ${ledgerTransactions.amount} ELSE 0 END), 0)::real`.as('trade'),
+      adjustment: sql<number>`COALESCE(SUM(CASE WHEN ${ledgerTransactions.reason} = 'adjustment' THEN ${ledgerTransactions.amount} ELSE 0 END), 0)::real`.as('adjustment'),
       total: sql<number>`COALESCE(SUM(${ledgerTransactions.amount}), 0)::real`.as('total'),
     })
     .from(leagueMembers)
