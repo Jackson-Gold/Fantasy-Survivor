@@ -598,12 +598,16 @@ adminRouter.get('/leagues/:leagueId/contestants', async (req: Request, res: Resp
 
 adminRouter.patch('/contestants/:id', async (req: Request, res: Response) => {
   const id = parseInt(req.params.id, 10);
-  const body = z.object({ status: z.enum(['active', 'eliminated', 'injured']).optional(), eliminatedEpisodeId: z.number().optional() }).safeParse(req.body);
+  const body = z.object({ status: z.enum(['active', 'eliminated', 'injured']).optional(), eliminatedEpisodeId: z.number().int().positive().nullable().optional() }).safeParse(req.body);
   if (Number.isNaN(id) || !body.success) {
     res.status(400).json({ error: 'Invalid request' });
     return;
   }
-  await db.update(contestants).set(body.data).where(eq(contestants.id, id));
+  const updates: { status?: string; eliminatedEpisodeId?: number | null } = { ...body.data };
+  if (body.data.status === 'active' && body.data.eliminatedEpisodeId === undefined) {
+    updates.eliminatedEpisodeId = null;
+  }
+  await db.update(contestants).set(updates).where(eq(contestants.id, id));
   res.json({ ok: true });
 });
 
@@ -986,6 +990,12 @@ adminRouter.post('/leagues/:leagueId/episodes/:episodeId/apply-vote-points', asy
       referenceType: 'episode',
       referenceId: episodeId,
     });
+  }
+  for (const contestantId of body.data.votedOutContestantIds) {
+    await db
+      .update(contestants)
+      .set({ status: 'eliminated', eliminatedEpisodeId: episodeId })
+      .where(and(eq(contestants.id, contestantId), eq(contestants.leagueId, leagueId)));
   }
   res.json({ ok: true, applied: Object.keys(userIdPoints).length });
 });

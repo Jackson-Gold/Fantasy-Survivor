@@ -173,50 +173,66 @@ export default function MyTeam() {
           <p className="text-sand-500 text-xs mb-4">Lock is Wednesday 8:00 PM ET. Rosters lock each week until the next episode.</p>
 
       <div className="card-tribal p-6 mb-6">
-        <h2 className="font-semibold text-ocean-800 mb-3">Your roster (2–3 contestants)</h2>
-        <ul className="space-y-3">
+        <h2 className="font-semibold text-ocean-800 mb-4">Your roster (2–3 contestants)</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
           {roster.map((r) => {
             const stats = statsByContestant[r.contestantId];
             const isOut = r.status !== 'active';
             return (
-            <li key={r.id} className={`flex items-center gap-3 ${isOut ? 'opacity-75' : ''}`}>
-              <ContestantAvatar name={r.name} size="lg" />
-              <div className="flex-1">
-                <span className="font-medium text-ocean-900">{r.name}</span>
-                {isOut && (
-                  <span className="text-ember-600 text-sm ml-2 font-medium">(out)</span>
-                )}
+              <div
+                key={r.id}
+                className={`rounded-xl border border-sand-200 bg-gradient-to-b from-white to-sand-50/50 p-4 flex flex-col items-center text-center ${isOut ? 'opacity-80' : ''}`}
+              >
+                <div className="relative">
+                  <ContestantAvatar name={r.name} size="lg" />
+                  {isOut && (
+                    <span className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 rounded-full bg-ember-500 px-2 py-0.5 text-xs font-semibold text-white">
+                      Out
+                    </span>
+                  )}
+                </div>
+                <h3 className="font-semibold text-ocean-900 mt-3">{r.name}</h3>
                 {stats ? (
-                  <div className="text-sand-600 text-sm mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
-                    {stats.individualImmunityWins > 0 && <span>Individual immunity: {stats.individualImmunityWins}</span>}
-                    {(stats.tribeRewardWins > 0 || stats.tribeImmunityWins > 0) && (
-                      <span>Tribe wins: Rwd {stats.tribeRewardWins} / Imm {stats.tribeImmunityWins}</span>
-                    )}
-                    {(stats.idolFound > 0 || stats.idolPlayed > 0) && (
-                      <span>Idols: found {stats.idolFound}, played {stats.idolPlayed}</span>
-                    )}
-                    {stats.survivedTribal > 0 && <span>Survived tribal: {stats.survivedTribal}</span>}
-                    {stats.eliminated > 0 && <span className="text-ember-600">Eliminated</span>}
-                    {!stats.individualImmunityWins && !stats.tribeRewardWins && !stats.tribeImmunityWins && !stats.idolFound && !stats.idolPlayed && stats.survivedTribal === 0 && stats.eliminated === 0 && (
-                      <span>No stats yet</span>
-                    )}
+                  <div className="mt-3 w-full grid grid-cols-2 gap-2 text-xs">
+                    <div className="rounded-lg bg-ocean-50 px-2 py-1.5 text-ocean-800">
+                      <span className="text-ocean-500 block">Ind. immunity</span>
+                      <span className="font-semibold">{stats.individualImmunityWins}</span>
+                    </div>
+                    <div className="rounded-lg bg-jungle-50 px-2 py-1.5 text-jungle-800">
+                      <span className="text-jungle-600 block">Tribe (R/I)</span>
+                      <span className="font-semibold">{stats.tribeRewardWins}/{stats.tribeImmunityWins}</span>
+                    </div>
+                    <div className="rounded-lg bg-amber-50 px-2 py-1.5 text-amber-800">
+                      <span className="text-amber-600 block">Idols</span>
+                      <span className="font-semibold">F:{stats.idolFound} P:{stats.idolPlayed}</span>
+                    </div>
+                    <div className="rounded-lg bg-sand-100 px-2 py-1.5 text-sand-800">
+                      <span className="text-sand-600 block">Survived</span>
+                      <span className="font-semibold">{stats.survivedTribal}</span>
+                    </div>
+                    <div className="col-span-2 rounded-lg px-2 py-1.5 text-center">
+                      {stats.eliminated > 0 ? (
+                        <span className="text-ember-600 font-medium">Eliminated</span>
+                      ) : (
+                        <span className="text-sand-500">Active</span>
+                      )}
+                    </div>
                   </div>
                 ) : (
-                  <p className="text-sand-600 text-sm mt-0.5">Loading stats…</p>
+                  <p className="text-sand-500 text-sm mt-2">Loading stats…</p>
+                )}
+                {isAdmin && !teamData.locked && roster.length > 2 && (
+                  <button
+                    onClick={() => removeMut.mutate(r.contestantId)}
+                    className="mt-3 text-red-600 text-sm hover:underline"
+                  >
+                    Remove
+                  </button>
                 )}
               </div>
-              {isAdmin && !teamData.locked && roster.length > 2 && (
-                <button
-                  onClick={() => removeMut.mutate(r.contestantId)}
-                  className="text-red-600 text-sm hover:underline"
-                >
-                  Remove
-                </button>
-              )}
-            </li>
-          );
+            );
           })}
-        </ul>
+        </div>
         {isAdmin && !teamData.locked && roster.length < 3 && available.length > 0 && (
           <div className="mt-4">
             <label className="block text-sm font-medium text-ocean-800 mb-1">Add contestant</label>

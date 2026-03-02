@@ -441,7 +441,7 @@ function AdminLeagueDetail() {
         <a href="#export" className="text-sm text-ocean-700 hover:text-ember-600 hover:underline px-2 py-1 rounded">Export</a>
       </nav>
 
-      <div id="contestants"><AdminLeagueContestants leagueId={leagueId} contestants={contestants} /></div>
+      <div id="contestants"><AdminLeagueContestants leagueId={leagueId} contestants={contestants} episodes={episodes} /></div>
       <div id="episodes"><AdminLeagueEpisodes leagueId={leagueId} episodes={episodes} /></div>
       <div id="outcomes"><AdminLeagueOutcomes leagueId={leagueId} episodes={episodes} contestants={contestants} scoringRules={scoringRules} /></div>
       <div id="winner-picks"><AdminLeagueWinnerPicks leagueId={leagueId} contestants={contestants} /></div>
@@ -455,7 +455,7 @@ function AdminLeagueDetail() {
   );
 }
 
-function AdminLeagueContestants({ leagueId, contestants }: { leagueId: number; contestants: Contestant[] }) {
+function AdminLeagueContestants({ leagueId, contestants, episodes }: { leagueId: number; contestants: Contestant[]; episodes: Episode[] }) {
   const [name, setName] = useState('');
   const qc = useQueryClient();
   const addContestant = useMutation({
@@ -507,7 +507,9 @@ function AdminLeagueContestants({ leagueId, contestants }: { leagueId: number; c
               <option value="injured">Injured</option>
             </select>
             {c.status === 'eliminated' && (
-              <span className="text-ocean-600 text-sm">Ep. {c.eliminatedEpisodeId ?? '—'}</span>
+              <span className="text-ocean-600 text-sm">
+                Eliminated Ep. {c.eliminatedEpisodeId != null ? (episodes.find((ep) => ep.id === c.eliminatedEpisodeId)?.episodeNumber ?? c.eliminatedEpisodeId) : '—'}
+              </span>
             )}
           </li>
         ))}

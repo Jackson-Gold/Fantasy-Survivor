@@ -158,7 +158,7 @@ leaguesRouter.get('/:id/feed', async (req: Request, res: Response) => {
     res.status(404).json({ error: 'League not found' });
     return;
   }
-  const limit = Math.min(Math.max(1, parseInt(String(req.query.limit), 10) || 30), 50);
+  const limit = Math.min(Math.max(5, parseInt(String(req.query.limit), 10) || 10), 10);
   const rows = await db
     .select({
       id: auditLog.id,

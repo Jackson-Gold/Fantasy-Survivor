@@ -142,27 +142,21 @@ export default function PicksEpisode() {
                   How likely is this survivor to go home?
                 </p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-4 flex-1 max-w-md">
                 {!locked && (
-                  <div className="flex gap-1">
-                    {Array.from({ length: voteTotal + 1 }, (_, i) => (
-                      <button
-                        key={i}
-                        type="button"
-                        title={`${i} votes`}
-                        onClick={() => setVote(c.id, i)}
-                        className={`w-8 h-8 rounded border text-sm font-medium transition-colors ${
-                          votes === i
-                            ? 'bg-ember-500 border-ember-600 text-white'
-                            : 'border-sand-300 bg-white text-ocean-800 hover:border-ember-400'
-                        }`}
-                      >
-                        {i}
-                      </button>
-                    ))}
-                  </div>
+                  <>
+                    <input
+                      type="range"
+                      min={0}
+                      max={voteTotal}
+                      value={votes}
+                      onChange={(e) => setVote(c.id, parseInt(e.target.value, 10))}
+                      className="flex-1 h-3 rounded-full appearance-none bg-sand-200 accent-ember-500"
+                    />
+                    <span className="w-10 text-right font-semibold text-ocean-800 tabular-nums">{votes}</span>
+                  </>
                 )}
-                <span className="w-12 text-right font-semibold text-ocean-800">GUESS: {votes}</span>
+                {locked && <span className="font-semibold text-ocean-800 tabular-nums">{votes} votes</span>}
               </div>
             </div>
           );
