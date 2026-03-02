@@ -19,7 +19,7 @@ import {
   trades,
   tradeItems,
 } from '../db/schema.js';
-import { eq, and, or, desc, asc, inArray } from 'drizzle-orm';
+import { eq, and, or, desc, asc, inArray, sql } from 'drizzle-orm';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 
 function generateInviteCode(): string {
@@ -971,14 +971,6 @@ adminRouter.post('/leagues/:leagueId/episodes/:episodeId/apply-vote-points', asy
       );
     votedOutContestantIds = eliminated.map((r) => r.id);
   }
-  await db.delete(ledgerTransactions).where(
-    and(
-      eq(ledgerTransactions.leagueId, leagueId),
-      eq(ledgerTransactions.reason, 'vote_prediction'),
-      eq(ledgerTransactions.referenceType, 'episode'),
-      eq(ledgerTransactions.referenceId, episodeId)
-    )
-  );
   const [rule] = await db
     .select()
     .from(scoringRules)
@@ -996,24 +988,55 @@ adminRouter.post('/leagues/:leagueId/episodes/:episodeId/apply-vote-points', asy
       userIdPoints[p.userId] = (userIdPoints[p.userId] ?? 0) + pts;
     }
   }
-  for (const [userId, amount] of Object.entries(userIdPoints)) {
-    if (amount <= 0) continue;
-    await db.insert(ledgerTransactions).values({
-      leagueId,
-      userId: parseInt(userId, 10),
-      amount,
-      reason: 'vote_prediction',
-      referenceType: 'episode',
-      referenceId: episodeId,
-    });
-  }
+
+  await db.transaction(async (tx) => {
+    await tx.delete(ledgerTransactions).where(
+      and(
+        eq(ledgerTransactions.leagueId, leagueId),
+        eq(ledgerTransactions.reason, 'vote_prediction'),
+        eq(ledgerTransactions.referenceType, 'episode'),
+        eq(ledgerTransactions.referenceId, episodeId)
+      )
+    );
+    for (const [userId, amount] of Object.entries(userIdPoints)) {
+      if (amount <= 0) continue;
+      await tx.insert(ledgerTransactions).values({
+        leagueId,
+        userId: parseInt(userId, 10),
+        amount: Number(amount),
+        reason: 'vote_prediction',
+        referenceType: 'episode',
+        referenceId: episodeId,
+      });
+    }
+  });
+
   for (const contestantId of votedOutContestantIds) {
     await db
       .update(contestants)
       .set({ status: 'eliminated', eliminatedEpisodeId: episodeId })
       .where(and(eq(contestants.id, contestantId), eq(contestants.leagueId, leagueId)));
   }
-  res.json({ ok: true, applied: Object.keys(userIdPoints).length, votedOutCount: votedOutContestantIds.length });
+
+  const verify = await db
+    .select({ total: sql<number>`COALESCE(SUM(${ledgerTransactions.amount}), 0)::real` })
+    .from(ledgerTransactions)
+    .where(
+      and(
+        eq(ledgerTransactions.leagueId, leagueId),
+        eq(ledgerTransactions.reason, 'vote_prediction'),
+        eq(ledgerTransactions.referenceType, 'episode'),
+        eq(ledgerTransactions.referenceId, episodeId)
+      )
+    );
+  const totalPointsSynced = verify[0]?.total ?? 0;
+
+  res.json({
+    ok: true,
+    applied: Object.keys(userIdPoints).length,
+    votedOutCount: votedOutContestantIds.length,
+    totalPointsSynced: Number(totalPointsSynced),
+  });
 });
 
 const pointAdjustmentBody = z.object({

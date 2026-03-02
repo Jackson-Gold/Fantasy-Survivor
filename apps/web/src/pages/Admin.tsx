@@ -965,13 +965,14 @@ function AdminLeagueVotePredictions({
 
   const syncVotePoints = useMutation({
     mutationFn: () =>
-      apiPost<{ ok: boolean; applied: number; votedOutCount: number }>(
+      apiPost<{ ok: boolean; applied: number; votedOutCount: number; totalPointsSynced?: number }>(
         `/admin/leagues/${leagueId}/episodes/${epId}/apply-vote-points`,
         { votedOutContestantIds: eliminatedContestantIds }
       ),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['admin-leagues', leagueId] });
       qc.invalidateQueries({ queryKey: ['leaderboard'] });
+      qc.refetchQueries({ queryKey: ['leaderboard', leagueId] });
     },
   });
 
@@ -1055,6 +1056,9 @@ function AdminLeagueVotePredictions({
               {syncVotePoints.isSuccess && syncVotePoints.data && (
                 <span className="text-jungle-700 text-sm font-medium">
                   Done: {syncVotePoints.data.applied} user(s) awarded for {syncVotePoints.data.votedOutCount} eliminated.
+                  {typeof syncVotePoints.data.totalPointsSynced === 'number' && (
+                    <> {syncVotePoints.data.totalPointsSynced} pts written to ledger.</>
+                  )}
                 </span>
               )}
             </div>
