@@ -3,10 +3,10 @@ import { useParams, Link, Navigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '../lib/api';
 import { useCurrentLeague } from '../hooks/useCurrentLeague';
-import { UserAvatar } from '../components/UserAvatar';
+import { TribePlayerLabel } from '../components/TribePlayerLabel';
 import FunFacts from '../components/FunFacts';
 
-type Row = { userId: number; username: string; avatarUrl?: string | null; total: number };
+type Row = { userId: number; username: string; avatarUrl?: string | null; tribeName?: string | null; total: number };
 
 type BreakdownRow = Row & {
   scoring_event: number;
@@ -20,7 +20,7 @@ type EpisodePoints = {
   episodeId: number;
   episodeNumber: number;
   title: string | null;
-  pointsByUser: { userId: number; username: string; points: number }[];
+  pointsByUser: { userId: number; username: string; tribeName?: string | null; points: number }[];
 };
 
 export default function Leaderboard() {
@@ -108,10 +108,7 @@ export default function Leaderboard() {
                 <tr key={r.userId} className="border-t border-sand-200">
                   <td className="p-3">{i + 1}</td>
                   <td className="p-3">
-                    <div className="flex items-center gap-2">
-                      <UserAvatar username={r.username} avatarUrl={r.avatarUrl} size="sm" />
-                      <span className="font-medium">{r.username}</span>
-                    </div>
+                    <TribePlayerLabel username={r.username} tribeName={r.tribeName} avatarUrl={r.avatarUrl} size="sm" />
                   </td>
                   <td className="p-3 text-right">{Number(r.total).toFixed(0)}</td>
                 </tr>
@@ -131,7 +128,7 @@ export default function Leaderboard() {
                 <thead className="bg-ocean-800 text-white">
                   <tr>
                     <th className="text-left p-3">#</th>
-                    <th className="text-left p-3">Player</th>
+                    <th className="text-left p-3">TRIBE/PLAYER</th>
                     <th className="text-right p-3">Team</th>
                     <th className="text-right p-3">Votes</th>
                     <th className="text-right p-3">Winner</th>
@@ -145,10 +142,7 @@ export default function Leaderboard() {
                     <tr key={r.userId} className="border-t border-sand-200">
                       <td className="p-3">{i + 1}</td>
                       <td className="p-3">
-                        <div className="flex items-center gap-2">
-                          <UserAvatar username={r.username} avatarUrl={r.avatarUrl} size="sm" />
-                          <span className="font-medium">{r.username}</span>
-                        </div>
+                        <TribePlayerLabel username={r.username} tribeName={r.tribeName} avatarUrl={r.avatarUrl} size="sm" />
                       </td>
                       <td className="p-3 text-right">{Number(r.scoring_event).toFixed(0)}</td>
                       <td className="p-3 text-right">{Number(r.vote_prediction).toFixed(0)}</td>
@@ -183,7 +177,7 @@ export default function Leaderboard() {
                     <thead className="bg-ocean-800 text-white">
                       <tr>
                         <th className="text-left p-3">#</th>
-                        <th className="text-left p-3">Player</th>
+                        <th className="text-left p-3">TRIBE/PLAYER</th>
                         <th className="text-right p-3">Points</th>
                       </tr>
                     </thead>
@@ -191,7 +185,9 @@ export default function Leaderboard() {
                       {ep.pointsByUser.map((u, i) => (
                         <tr key={u.userId} className="border-t border-sand-200">
                           <td className="p-3">{i + 1}</td>
-                          <td className="p-3 font-medium">{u.username}</td>
+                          <td className="p-3">
+                            <TribePlayerLabel username={u.username} tribeName={u.tribeName} showAvatar={false} />
+                          </td>
                           <td className="p-3 text-right">{Number(u.points).toFixed(0)}</td>
                         </tr>
                       ))}

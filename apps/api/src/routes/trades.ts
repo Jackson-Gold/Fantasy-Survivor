@@ -149,8 +149,8 @@ tradesRouter.get('/:leagueId', async (req: Request, res: Response) => {
     .orderBy(desc(trades.createdAt));
   const withItems = await Promise.all(
     list.map(async (t) => {
-      const [proposer] = await db.select({ username: users.username }).from(users).where(eq(users.id, t.proposerId));
-      const [acceptor] = await db.select({ username: users.username }).from(users).where(eq(users.id, t.acceptorId));
+      const [proposer] = await db.select({ username: users.username, tribeName: users.tribeName }).from(users).where(eq(users.id, t.proposerId));
+      const [acceptor] = await db.select({ username: users.username, tribeName: users.tribeName }).from(users).where(eq(users.id, t.acceptorId));
       const itemRows = await db.select().from(tradeItems).where(eq(tradeItems.tradeId, t.id));
       const items = await Promise.all(
         itemRows.map(async (it) => {
@@ -165,7 +165,9 @@ tradesRouter.get('/:leagueId', async (req: Request, res: Response) => {
       return {
         ...t,
         proposerUsername: proposer?.username ?? '',
+        proposerTribeName: proposer?.tribeName ?? null,
         acceptorUsername: acceptor?.username ?? '',
+        acceptorTribeName: acceptor?.tribeName ?? null,
         items,
       };
     })

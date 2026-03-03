@@ -12,11 +12,13 @@ type Trade = {
   status: string;
   note: string | null;
   proposerUsername?: string;
+  proposerTribeName?: string | null;
   acceptorUsername?: string;
+  acceptorTribeName?: string | null;
   items: TradeItem[];
 };
 
-type LeagueMember = { id: number; username: string };
+type LeagueMember = { id: number; username: string; tribeName?: string | null };
 type RosterItem = { id: number; contestantId: number; name: string };
 
 export default function Trades() {
@@ -157,7 +159,9 @@ export default function Trades() {
               >
                 <option value="">Select player…</option>
                 {otherMembers.map((m) => (
-                  <option key={m.id} value={m.id}>{m.username}</option>
+                  <option key={m.id} value={m.id}>
+                    {m.tribeName?.trim() ? `${m.tribeName.trim()} (${m.username})` : m.username}
+                  </option>
                 ))}
               </select>
             </div>
@@ -226,7 +230,7 @@ export default function Trades() {
         {tradesList.map((t) => (
           <li key={t.id} className="rounded-xl border border-sand-300 bg-sand-50 p-4">
             <p className="font-medium text-ocean-900">
-              {t.proposerUsername ?? 'Proposer'} → {t.acceptorUsername ?? 'Acceptor'}
+              {t.proposerTribeName?.trim() || t.proposerUsername || 'Proposer'} → {t.acceptorTribeName?.trim() || t.acceptorUsername || 'Acceptor'}
             </p>
             <p className="text-sm text-ocean-600 mt-0.5">Status: {t.status}</p>
             {t.note && <p className="text-ocean-700 mt-1 text-sm">{t.note}</p>}

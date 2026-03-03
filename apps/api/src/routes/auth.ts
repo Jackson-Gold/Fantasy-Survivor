@@ -51,6 +51,7 @@ authRouter.post('/login', async (req: Request, res: Response) => {
       role: user.role,
       mustChangePassword: user.mustChangePassword,
       avatarUrl: user.avatarUrl ?? undefined,
+      tribeName: user.tribeName ?? undefined,
     },
     token,
   });

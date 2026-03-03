@@ -31,13 +31,14 @@ leaderboardRouter.get('/:leagueId', async (req: Request, res: Response) => {
       userId: users.id,
       username: users.username,
       avatarUrl: users.avatarUrl,
+      tribeName: users.tribeName,
       total: sql<number>`COALESCE(SUM(${ledgerTransactions.amount}), 0)::real`.as('total'),
     })
     .from(leagueMembers)
     .innerJoin(users, eq(leagueMembers.userId, users.id))
     .leftJoin(ledgerTransactions, and(eq(ledgerTransactions.leagueId, leagueId), eq(ledgerTransactions.userId, users.id)))
     .where(eq(leagueMembers.leagueId, leagueId))
-    .groupBy(users.id, users.username, users.avatarUrl)
+    .groupBy(users.id, users.username, users.avatarUrl, users.tribeName)
     .orderBy(desc(sql`COALESCE(SUM(${ledgerTransactions.amount}), 0)`));
   res.json({ leaderboard: rows });
 });
@@ -46,6 +47,7 @@ type BreakdownRow = {
   userId: number;
   username: string;
   avatarUrl: string | null;
+  tribeName: string | null;
   scoring_event: number;
   vote_prediction: number;
   winner_pick: number;
@@ -70,6 +72,7 @@ leaderboardRouter.get('/:leagueId/breakdown', async (req: Request, res: Response
       userId: users.id,
       username: users.username,
       avatarUrl: users.avatarUrl,
+      tribeName: users.tribeName,
       scoring_event: sql<number>`COALESCE(SUM(CASE WHEN ${ledgerTransactions.reason} = 'scoring_event' THEN ${ledgerTransactions.amount} ELSE 0 END), 0)::real`.as('scoring_event'),
       vote_prediction: sql<number>`COALESCE(SUM(CASE WHEN ${ledgerTransactions.reason} = 'vote_prediction' THEN ${ledgerTransactions.amount} ELSE 0 END), 0)::real`.as('vote_prediction'),
       winner_pick: sql<number>`COALESCE(SUM(CASE WHEN ${ledgerTransactions.reason} = 'winner_pick' THEN ${ledgerTransactions.amount} ELSE 0 END), 0)::real`.as('winner_pick'),
@@ -81,12 +84,12 @@ leaderboardRouter.get('/:leagueId/breakdown', async (req: Request, res: Response
     .innerJoin(users, eq(leagueMembers.userId, users.id))
     .leftJoin(ledgerTransactions, and(eq(ledgerTransactions.leagueId, leagueId), eq(ledgerTransactions.userId, users.id)))
     .where(eq(leagueMembers.leagueId, leagueId))
-    .groupBy(users.id, users.username, users.avatarUrl)
+    .groupBy(users.id, users.username, users.avatarUrl, users.tribeName)
     .orderBy(desc(sql`COALESCE(SUM(${ledgerTransactions.amount}), 0)`));
   res.json({ leaderboard: rows as BreakdownRow[] });
 });
 
-type EpisodeStanding = { episodeId: number; episodeNumber: number; title: string | null; pointsByUser: { userId: number; username: string; points: number }[] };
+type EpisodeStanding = { episodeId: number; episodeNumber: number; title: string | null; pointsByUser: { userId: number; username: string; tribeName: string | null; points: number }[] };
 
 leaderboardRouter.get('/:leagueId/by-episode', async (req: Request, res: Response) => {
   const leagueId = parseInt(req.params.leagueId, 10);
@@ -105,7 +108,7 @@ leaderboardRouter.get('/:leagueId/by-episode', async (req: Request, res: Respons
     .where(eq(episodes.leagueId, leagueId))
     .orderBy(asc(episodes.episodeNumber));
   const members = await db
-    .select({ userId: users.id, username: users.username })
+    .select({ userId: users.id, username: users.username, tribeName: users.tribeName })
     .from(leagueMembers)
     .innerJoin(users, eq(leagueMembers.userId, users.id))
     .where(eq(leagueMembers.leagueId, leagueId));
@@ -154,7 +157,7 @@ leaderboardRouter.get('/:leagueId/by-episode', async (req: Request, res: Respons
     episodeNumber: ep.episodeNumber,
     title: ep.title,
     pointsByUser: members
-      .map((m) => ({ userId: m.userId, username: m.username, points: pointsByUserByEpisode[m.userId]?.[ep.id] ?? 0 }))
+      .map((m) => ({ userId: m.userId, username: m.username, tribeName: m.tribeName ?? null, points: pointsByUserByEpisode[m.userId]?.[ep.id] ?? 0 }))
       .sort((a, b) => b.points - a.points),
   }));
   res.json({ episodes: result });

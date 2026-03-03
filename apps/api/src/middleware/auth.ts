@@ -10,6 +10,7 @@ export type SessionUser = {
   role: 'admin' | 'player';
   mustChangePassword: boolean;
   avatarUrl?: string | null;
+  tribeName?: string | null;
 };
 
 declare global {
@@ -42,6 +43,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     role: users.role,
     mustChangePassword: users.mustChangePassword,
     avatarUrl: users.avatarUrl,
+    tribeName: users.tribeName,
   }).from(users).where(eq(users.id, payload.userId));
   if (!user) {
     res.status(401).json({ error: 'Not authenticated' });

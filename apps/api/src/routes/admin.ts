@@ -19,7 +19,7 @@ import {
   trades,
   tradeItems,
 } from '../db/schema.js';
-import { eq, and, or, desc, asc, inArray, sql } from 'drizzle-orm';
+import { eq, and, or, desc, asc, inArray } from 'drizzle-orm';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 
 function generateInviteCode(): string {
@@ -147,7 +147,7 @@ adminRouter.delete('/users/:id', async (req: Request, res: Response) => {
 });
 
 adminRouter.get('/users', async (_req: Request, res: Response) => {
-  const list = await db.select({ id: users.id, username: users.username, role: users.role, mustChangePassword: users.mustChangePassword }).from(users);
+  const list = await db.select({ id: users.id, username: users.username, tribeName: users.tribeName, role: users.role, mustChangePassword: users.mustChangePassword }).from(users);
   res.json({ users: list });
 });
 
@@ -302,10 +302,10 @@ adminRouter.get('/leagues/:leagueId/winner-picks', async (req: Request, res: Res
     res.status(400).json({ error: 'Invalid league id' });
     return;
   }
-  const members = await db.select({ userId: leagueMembers.userId, username: users.username }).from(leagueMembers).innerJoin(users, eq(leagueMembers.userId, users.id)).where(eq(leagueMembers.leagueId, leagueId));
+  const members = await db.select({ userId: leagueMembers.userId, username: users.username, tribeName: users.tribeName }).from(leagueMembers).innerJoin(users, eq(leagueMembers.userId, users.id)).where(eq(leagueMembers.leagueId, leagueId));
   const picks = await db.select({ userId: winnerPicks.userId, contestantId: winnerPicks.contestantId, name: contestants.name }).from(winnerPicks).innerJoin(contestants, eq(winnerPicks.contestantId, contestants.id)).where(eq(winnerPicks.leagueId, leagueId));
   const pickByUser = new Map(picks.map((p) => [p.userId, { contestantId: p.contestantId, name: p.name }]));
-  const list = members.map((m) => ({ userId: m.userId, username: m.username, pick: pickByUser.get(m.userId) ?? null }));
+  const list = members.map((m) => ({ userId: m.userId, username: m.username, tribeName: m.tribeName ?? null, pick: pickByUser.get(m.userId) ?? null }));
   res.json({ winnerPicks: list });
 });
 
@@ -353,7 +353,7 @@ adminRouter.get('/leagues/:leagueId/episodes/:episodeId/votes', async (req: Requ
     res.status(404).json({ error: 'Episode not found' });
     return;
   }
-  const members = await db.select({ userId: leagueMembers.userId, username: users.username }).from(leagueMembers).innerJoin(users, eq(leagueMembers.userId, users.id)).where(eq(leagueMembers.leagueId, leagueId));
+  const members = await db.select({ userId: leagueMembers.userId, username: users.username, tribeName: users.tribeName }).from(leagueMembers).innerJoin(users, eq(leagueMembers.userId, users.id)).where(eq(leagueMembers.leagueId, leagueId));
   const predictions = await db
     .select({ userId: votePredictions.userId, contestantId: votePredictions.contestantId, name: contestants.name, votes: votePredictions.votes })
     .from(votePredictions)
@@ -370,13 +370,16 @@ adminRouter.get('/leagues/:leagueId/episodes/:episodeId/votes', async (req: Requ
     if (!byUser.has(r.userId)) byUser.set(r.userId, []);
     byUser.get(r.userId)!.push({ contestantId: r.contestantId, name: r.name, votes: r.votes });
   }
-  const list = members.map((m) => ({ userId: m.userId, username: m.username, allocations: byUser.get(m.userId) ?? [] }));
+  const list = members.map((m) => ({ userId: m.userId, username: m.username, tribeName: m.tribeName ?? null, allocations: byUser.get(m.userId) ?? [] }));
   res.json({ episodeId, votesByUser: list });
 });
 
 const putVotesBody = z.object({
-  userId: z.number().int().positive(),
-  allocations: z.array(z.object({ contestantId: z.number().int().positive(), votes: z.number().int().min(0) })),
+  userId: z.coerce.number().int().positive(),
+  allocations: z.array(z.object({
+    contestantId: z.coerce.number().int().positive(),
+    votes: z.coerce.number().int().min(0),
+  })),
 });
 adminRouter.put('/leagues/:leagueId/episodes/:episodeId/votes', async (req: Request, res: Response) => {
   const leagueId = parseInt(req.params.leagueId, 10);
@@ -439,7 +442,7 @@ adminRouter.get('/leagues/:leagueId/teams', async (req: Request, res: Response) 
     res.status(400).json({ error: 'Invalid league id' });
     return;
   }
-  const members = await db.select({ userId: leagueMembers.userId, username: users.username }).from(leagueMembers).innerJoin(users, eq(leagueMembers.userId, users.id)).where(eq(leagueMembers.leagueId, leagueId));
+  const members = await db.select({ userId: leagueMembers.userId, username: users.username, tribeName: users.tribeName }).from(leagueMembers).innerJoin(users, eq(leagueMembers.userId, users.id)).where(eq(leagueMembers.leagueId, leagueId));
   const rosterRows = await db
     .select({ userId: teams.userId, contestantId: teams.contestantId, name: contestants.name })
     .from(teams)
@@ -450,7 +453,7 @@ adminRouter.get('/leagues/:leagueId/teams', async (req: Request, res: Response) 
     if (!byUser.has(r.userId)) byUser.set(r.userId, []);
     byUser.get(r.userId)!.push({ contestantId: r.contestantId, name: r.name });
   }
-  const list = members.map((m) => ({ userId: m.userId, username: m.username, roster: byUser.get(m.userId) ?? [] }));
+  const list = members.map((m) => ({ userId: m.userId, username: m.username, tribeName: m.tribeName ?? null, roster: byUser.get(m.userId) ?? [] }));
   res.json({ teams: list });
 });
 
@@ -989,8 +992,9 @@ adminRouter.post('/leagues/:leagueId/episodes/:episodeId/apply-vote-points', asy
     }
   }
   const intendedTotal = Object.values(userIdPoints).reduce((s, n) => s + n, 0);
+  const appliedCount = Object.entries(userIdPoints).filter(([, amt]) => amt > 0).length;
 
-  const totalPointsSynced = await db.transaction(async (tx) => {
+  await db.transaction(async (tx) => {
     await tx.delete(ledgerTransactions).where(
       and(
         eq(ledgerTransactions.leagueId, leagueId),
@@ -1010,18 +1014,6 @@ adminRouter.post('/leagues/:leagueId/episodes/:episodeId/apply-vote-points', asy
         referenceId: episodeId,
       });
     }
-    const verify = await tx
-      .select({ total: sql<number>`COALESCE(SUM(${ledgerTransactions.amount}), 0)::real` })
-      .from(ledgerTransactions)
-      .where(
-        and(
-          eq(ledgerTransactions.leagueId, leagueId),
-          eq(ledgerTransactions.reason, 'vote_prediction'),
-          eq(ledgerTransactions.referenceType, 'episode'),
-          eq(ledgerTransactions.referenceId, episodeId)
-        )
-      );
-    return Number(verify[0]?.total ?? 0);
   });
 
   for (const contestantId of votedOutContestantIds) {
@@ -1033,9 +1025,9 @@ adminRouter.post('/leagues/:leagueId/episodes/:episodeId/apply-vote-points', asy
 
   res.json({
     ok: true,
-    applied: Object.keys(userIdPoints).length,
+    applied: appliedCount,
     votedOutCount: votedOutContestantIds.length,
-    totalPointsSynced: totalPointsSynced > 0 ? totalPointsSynced : intendedTotal,
+    totalPointsSynced: intendedTotal,
   });
 });
 

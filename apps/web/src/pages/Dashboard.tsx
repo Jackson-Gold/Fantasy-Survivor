@@ -4,12 +4,13 @@ import { apiGet } from '../lib/api';
 import { getNextLockTime } from '../lib/lock';
 import { useCurrentLeague } from '../hooks/useCurrentLeague';
 import FunFacts from '../components/FunFacts';
+import { TribePlayerLabel } from '../components/TribePlayerLabel';
 
 type League = { id: number; name: string; seasonName?: string };
 type RosterItem = { id: number; contestantId: number; name: string; status: string };
 type Episode = { id: number; leagueId: number; episodeNumber: number; title: string | null; airDate: string; lockAt: string };
 type WinnerPick = { id: number; contestantId: number; name: string; pickedAt: string } | null;
-type LeaderboardRow = { userId: number; username: string; total: number };
+type LeaderboardRow = { userId: number; username: string; avatarUrl?: string | null; tribeName?: string | null; total: number };
 type FeedItem = { id: number; timestamp: string; actionType: string; message: string; actorUsername: string | null };
 
 function LockCountdown({ lockAt }: { lockAt: Date }) {
@@ -261,7 +262,7 @@ export default function Dashboard() {
                   <thead className="bg-ocean-800 text-white">
                     <tr>
                       <th className="text-left p-3">#</th>
-                      <th className="text-left p-3">Player</th>
+                      <th className="text-left p-3">Tribe / Player</th>
                       <th className="text-right p-3">Points</th>
                     </tr>
                   </thead>
@@ -269,7 +270,9 @@ export default function Dashboard() {
                     {leaderboardRows.map((r, i) => (
                       <tr key={r.userId} className="border-t border-sand-200">
                         <td className="p-3">{i + 1}</td>
-                        <td className="p-3 font-medium">{r.username}</td>
+                        <td className="p-3">
+                          <TribePlayerLabel username={r.username} tribeName={r.tribeName} avatarUrl={r.avatarUrl} size="sm" />
+                        </td>
                         <td className="p-3 text-right">{Number(r.total).toFixed(0)}</td>
                       </tr>
                     ))}

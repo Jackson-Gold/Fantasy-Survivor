@@ -19,6 +19,7 @@ export const users = pgTable('users', {
   role: varchar('role', { length: 16 }).notNull().default('player'), // 'admin' | 'player'
   mustChangePassword: boolean('must_change_password').notNull().default(true),
   avatarUrl: varchar('avatar_url', { length: 512 }),
+  tribeName: varchar('tribe_name', { length: 128 }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });

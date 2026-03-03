@@ -96,7 +96,7 @@ leaguesRouter.get('/:id/members', async (req: Request, res: Response) => {
     return;
   }
   const list = await db
-    .select({ id: users.id, username: users.username })
+    .select({ id: users.id, username: users.username, tribeName: users.tribeName })
     .from(leagueMembers)
     .innerJoin(users, eq(leagueMembers.userId, users.id))
     .where(eq(leagueMembers.leagueId, id));

@@ -1,7 +1,7 @@
-import { useRef } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiGet, apiPost } from '../lib/api';
+import { apiGet, apiPost, apiPatch } from '../lib/api';
 import { ContestantAvatar } from '../components/ContestantAvatar';
 import { UserAvatar } from '../components/UserAvatar';
 import { useCurrentLeague } from '../hooks/useCurrentLeague';
@@ -43,12 +43,21 @@ export default function Profile() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { data, isLoading: meLoading, error: meError } = useQuery({
     queryKey: ['me'],
-    queryFn: () => apiGet<{ user: { username: string; role?: string; avatarUrl?: string | null } }>('/auth/me'),
+    queryFn: () => apiGet<{ user: { username: string; role?: string; avatarUrl?: string | null; tribeName?: string | null } }>('/auth/me'),
     retry: false,
   });
 
   const uploadAvatar = useMutation({
     mutationFn: (imageDataUrl: string) => apiPost<{ avatar_url: string }>('/profile/avatar', { image: imageDataUrl }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['me'] }),
+  });
+
+  const [tribeNameInput, setTribeNameInput] = useState('');
+  useEffect(() => {
+    setTribeNameInput(data?.user?.tribeName ?? '');
+  }, [data?.user?.tribeName]);
+  const patchProfile = useMutation({
+    mutationFn: (body: { tribeName: string | null }) => apiPatch<{ tribeName: string | null }>('/profile', body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['me'] }),
   });
 
@@ -153,6 +162,29 @@ export default function Profile() {
                 {uploadAvatar.isPending ? 'Uploading…' : 'Upload profile photo'}
               </button>
               {uploadAvatar.isError && <span className="text-red-600 text-sm ml-2">{(uploadAvatar.error as Error).message}</span>}
+            </div>
+            <div className="mt-4 pt-4 border-t border-sand-200">
+              <label className="block text-sm font-medium text-ocean-800 mb-1">Tribe name</label>
+              <p className="text-xs text-ocean-600 mb-2">Shown on leaderboards and elsewhere instead of your username. Leave blank to show username.</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  type="text"
+                  maxLength={128}
+                  value={tribeNameInput}
+                  onChange={(e) => setTribeNameInput(e.target.value)}
+                  placeholder="e.g. The Palantir Tribe"
+                  className="input-tribal flex-1 min-w-[180px]"
+                />
+                <button
+                  type="button"
+                  onClick={() => patchProfile.mutate({ tribeName: tribeNameInput.trim() || null })}
+                  disabled={patchProfile.isPending || (tribeNameInput.trim() || '') === (data?.user?.tribeName ?? '')}
+                  className="btn-primary"
+                >
+                  {patchProfile.isPending ? 'Saving…' : 'Save'}
+                </button>
+              </div>
+              {patchProfile.isError && <span className="text-red-600 text-sm mt-1 block">{(patchProfile.error as Error).message}</span>}
             </div>
           </div>
         </div>

@@ -64,7 +64,7 @@ function AdminUsers() {
   const qc = useQueryClient();
   const { data } = useQuery({
     queryKey: ['admin-users'],
-    queryFn: () => apiGet<{ users: { id: number; username: string; role: string; mustChangePassword: boolean }[] }>('/admin/users'),
+    queryFn: () => apiGet<{ users: { id: number; username: string; tribeName?: string | null; role: string; mustChangePassword: boolean }[] }>('/admin/users'),
   });
   const { data: me } = useQuery({
     queryKey: ['me'],
@@ -445,7 +445,7 @@ function AdminLeagueDetail() {
       <div id="episodes"><AdminLeagueEpisodes leagueId={leagueId} episodes={episodes} /></div>
       <div id="outcomes"><AdminLeagueOutcomes leagueId={leagueId} episodes={episodes} contestants={contestants} scoringRules={scoringRules} /></div>
       <div id="winner-picks"><AdminLeagueWinnerPicks leagueId={leagueId} contestants={contestants} /></div>
-      <div id="vote-predictions"><AdminLeagueVotePredictions leagueId={leagueId} episodes={episodes} contestants={contestants} /></div>
+      <div id="vote-predictions"><AdminLeagueVotePredictions leagueId={leagueId} episodes={episodes} contestants={contestants} voteTotal={league.voteTotal ?? 10} /></div>
       <div id="teams"><AdminLeagueRosters leagueId={leagueId} contestants={contestants} /></div>
       <div id="trades"><AdminLeagueTrades leagueId={leagueId} /></div>
       <div id="adjustments"><AdminLeaguePointAdjustments leagueId={leagueId} /></div>
@@ -845,7 +845,7 @@ function AdminLeagueOutcomes({
 }
 
 // ---------- Winner picks (admin) ----------
-type WinnerPickRow = { userId: number; username: string; pick: { contestantId: number; name: string } | null };
+type WinnerPickRow = { userId: number; username: string; tribeName?: string | null; pick: { contestantId: number; name: string } | null };
 function AdminLeagueWinnerPicks({ leagueId, contestants }: { leagueId: number; contestants: Contestant[] }) {
   const qc = useQueryClient();
   const { data } = useQuery({
@@ -867,7 +867,7 @@ function AdminLeagueWinnerPicks({ leagueId, contestants }: { leagueId: number; c
   });
 
   const list = data?.winnerPicks ?? [];
-  const memberOptions = list.map((r) => ({ id: r.userId, name: r.username }));
+  const memberOptions = list.map((r) => ({ id: r.userId, name: (r.tribeName?.trim() || r.username) }));
 
   return (
     <div className="card-tribal p-4">
@@ -882,7 +882,7 @@ function AdminLeagueWinnerPicks({ leagueId, contestants }: { leagueId: number; c
         <tbody>
           {list.map((row) => (
             <tr key={row.userId} className="border-b border-sand-200">
-              <td className="py-2">{row.username}</td>
+              <td className="py-2">{row.tribeName?.trim() || row.username}</td>
               <td className="py-2">{row.pick ? row.pick.name : '—'}</td>
             </tr>
           ))}
@@ -930,15 +930,16 @@ function AdminLeagueWinnerPicks({ leagueId, contestants }: { leagueId: number; c
 }
 
 // ---------- Vote predictions (admin) ----------
-const defaultVoteTotal = 10;
 function AdminLeagueVotePredictions({
   leagueId,
   episodes,
   contestants,
+  voteTotal: defaultVoteTotal = 10,
 }: {
   leagueId: number;
   episodes: Episode[];
   contestants: Contestant[];
+  voteTotal?: number;
 }) {
   const qc = useQueryClient();
   const [episodeId, setEpisodeId] = useState<string>('');
@@ -955,7 +956,7 @@ function AdminLeagueVotePredictions({
   };
   const { data: votesData } = useQuery({
     queryKey: ['admin-leagues', leagueId, 'votes', episodeId],
-    queryFn: () => apiGet<{ votesByUser: { userId: number; username: string; allocations: { contestantId: number; name: string; votes: number }[] }[] }>(
+    queryFn: () => apiGet<{ votesByUser: { userId: number; username: string; tribeName?: string | null; allocations: { contestantId: number; name: string; votes: number }[] }[] }>(
       `/admin/leagues/${leagueId}/episodes/${episodeId}/votes`
     ),
     enabled: leagueId > 0 && episodeId !== '',
@@ -976,12 +977,17 @@ function AdminLeagueVotePredictions({
     },
   });
 
+  const [putVotesError, setPutVotesError] = useState<string | null>(null);
   const putVotes = useMutation({
     mutationFn: (body: { userId: number; allocations: { contestantId: number; votes: number }[] }) =>
       apiPut(`/admin/leagues/${leagueId}/episodes/${epId}/votes`, body),
     onSuccess: () => {
       setEditUserId('');
+      setPutVotesError(null);
       qc.invalidateQueries({ queryKey: ['admin-leagues', leagueId, 'votes', episodeId] });
+    },
+    onError: (err: Error) => {
+      setPutVotesError(err.message ?? 'Failed to save');
     },
   });
 
@@ -1056,9 +1062,10 @@ function AdminLeagueVotePredictions({
               {syncVotePoints.isSuccess && syncVotePoints.data && (
                 <span className="text-jungle-700 text-sm font-medium">
                   Done: {syncVotePoints.data.applied} user(s) awarded for {syncVotePoints.data.votedOutCount} eliminated.
-                  {typeof syncVotePoints.data.totalPointsSynced === 'number' && (
-                    <> {syncVotePoints.data.totalPointsSynced} pts written to ledger.</>
-                  )}
+                  {' '}
+                  {typeof syncVotePoints.data.totalPointsSynced === 'number'
+                    ? `${syncVotePoints.data.totalPointsSynced} pts written to ledger.`
+                    : ''}
                 </span>
               )}
             </div>
@@ -1083,7 +1090,7 @@ function AdminLeagueVotePredictions({
             <tbody>
               {votesByUser.map((row) => (
                 <tr key={row.userId} className="border-b border-sand-200">
-                  <td className="py-2">{row.username}</td>
+                  <td className="py-2">{row.tribeName?.trim() || row.username}</td>
                   <td className="py-2">{row.allocations.map((a) => `${a.name}: ${a.votes}`).join(', ') || '—'}</td>
                   <td className="py-2">
                     <button type="button" onClick={() => startEdit(row.userId)} className="text-ember-600 text-sm hover:underline">Edit</button>
@@ -1110,21 +1117,28 @@ function AdminLeagueVotePredictions({
                 ))}
               </div>
               <p className={`text-sm mb-2 ${total === defaultVoteTotal ? 'text-jungle-700' : 'text-ember-600'}`}>Total: {total}</p>
+              {putVotesError && (
+                <p className="text-sm text-red-600 mb-2">{putVotesError}</p>
+              )}
               <div className="flex gap-2">
                 <button
                   type="button"
                   className="btn-primary"
                   disabled={total !== defaultVoteTotal || putVotes.isPending}
-                  onClick={() =>
+                  onClick={() => {
+                    setPutVotesError(null);
                     putVotes.mutate({
                       userId: Number(editUserId),
-                      allocations: allocations.map((a) => ({ contestantId: a.contestantId, votes: Number(a.votes) })),
-                    })
-                  }
+                      allocations: contestants.map((c) => ({
+                        contestantId: c.id,
+                        votes: Number(allocations.find((a) => a.contestantId === c.id)?.votes ?? 0),
+                      })),
+                    });
+                  }}
                 >
                   Save
                 </button>
-                <button type="button" onClick={() => setEditUserId('')} className="text-ocean-600 text-sm hover:underline">Cancel</button>
+                <button type="button" onClick={() => { setEditUserId(''); setPutVotesError(null); }} className="text-ocean-600 text-sm hover:underline">Cancel</button>
               </div>
             </div>
           )}
@@ -1135,7 +1149,7 @@ function AdminLeagueVotePredictions({
 }
 
 // ---------- Rosters (admin) ----------
-type TeamRow = { userId: number; username: string; roster: { contestantId: number; name: string }[] };
+type TeamRow = { userId: number; username: string; tribeName?: string | null; roster: { contestantId: number; name: string }[] };
 function AdminLeagueRosters({ leagueId, contestants }: { leagueId: number; contestants: Contestant[] }) {
   const qc = useQueryClient();
   const { data } = useQuery({
@@ -1171,7 +1185,7 @@ function AdminLeagueRosters({ leagueId, contestants }: { leagueId: number; conte
       <ul className="space-y-4 mb-4">
         {teamsList.map((t) => (
           <li key={t.userId} className="border border-sand-200 rounded-lg p-3">
-            <span className="font-medium text-ocean-800">{t.username}</span>
+            <span className="font-medium text-ocean-800">{t.tribeName?.trim() || t.username}</span>
             <ul className="flex flex-wrap gap-2 mt-2">
               {t.roster.map((r) => (
                 <li key={r.contestantId} className="flex items-center gap-1 bg-sand-100 px-2 py-1 rounded text-sm">
@@ -1345,7 +1359,7 @@ function AdminLeaguePointAdjustments({ leagueId }: { leagueId: number }) {
   const [message, setMessage] = useState<string | null>(null);
   const { data: winnerPicksData } = useQuery({
     queryKey: ['admin-leagues', leagueId, 'winner-picks'],
-    queryFn: () => apiGet<{ winnerPicks: { userId: number; username: string }[] }>(`/admin/leagues/${leagueId}/winner-picks`),
+    queryFn: () => apiGet<{ winnerPicks: { userId: number; username: string; tribeName?: string | null }[] }>(`/admin/leagues/${leagueId}/winner-picks`),
     enabled: leagueId > 0,
   });
   const members = winnerPicksData?.winnerPicks ?? [];
@@ -1386,7 +1400,7 @@ function AdminLeaguePointAdjustments({ leagueId }: { leagueId: number }) {
           >
             <option value="">—</option>
             {members.map((m) => (
-              <option key={m.userId} value={m.userId}>{m.username}</option>
+              <option key={m.userId} value={m.userId}>{m.tribeName?.trim() || m.username}</option>
             ))}
           </select>
         </div>

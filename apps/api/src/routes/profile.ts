@@ -17,6 +17,25 @@ const avatarBody = z.object({
   image: z.string().min(1), // data:image/jpeg;base64,... or data:image/png;base64,...
 });
 
+const patchProfileBody = z.object({
+  tribeName: z.string().max(128).nullable().optional(),
+});
+
+profileRouter.patch('/', async (req: Request, res: Response) => {
+  const parsed = patchProfileBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid body', details: parsed.error.flatten() });
+    return;
+  }
+  if (parsed.data.tribeName === undefined) {
+    res.status(400).json({ error: 'tribeName required' });
+    return;
+  }
+  const value = parsed.data.tribeName === null || parsed.data.tribeName === '' ? null : parsed.data.tribeName.trim() || null;
+  await db.update(users).set({ tribeName: value, updatedAt: new Date() }).where(eq(users.id, req.user!.id));
+  res.json({ tribeName: value });
+});
+
 function getUploadsDir(): string {
   const base = process.env.UPLOAD_PATH || path.join(process.cwd(), 'uploads');
   const avatarsDir = path.join(base, 'avatars');
