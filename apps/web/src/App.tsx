@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { apiGet, ensureApiConfig } from './lib/api';
 import Layout from './components/Layout';
@@ -7,8 +7,8 @@ import Landing from './pages/Landing';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import MyTeam from './pages/MyTeam';
+import TeamView from './pages/TeamView';
 import Picks from './pages/Picks';
-import PicksEpisode from './pages/PicksEpisode';
 import Trades from './pages/Trades';
 import Leaderboard from './pages/Leaderboard';
 import Profile from './pages/Profile';
@@ -37,6 +37,11 @@ function AdminOnly({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function PicksEpisodeRedirect() {
+  const { leagueId } = useParams<{ leagueId: string }>();
+  return <Navigate to={leagueId ? `/picks/${leagueId}` : '/dashboard'} replace />;
+}
+
 export default function App() {
   useEffect(() => {
     ensureApiConfig();
@@ -49,8 +54,9 @@ export default function App() {
         <Route path="login" element={<Login />} />
         <Route path="dashboard" element={<Protected><Dashboard /></Protected>} />
         <Route path="team/:leagueId" element={<Protected><MyTeam /></Protected>} />
+        <Route path="team/:leagueId/user/:userId" element={<Protected><TeamView /></Protected>} />
         <Route path="picks/:leagueId" element={<Protected><Picks /></Protected>} />
-        <Route path="picks/:leagueId/episode/:episodeId" element={<Protected><PicksEpisode /></Protected>} />
+        <Route path="picks/:leagueId/episode/:episodeId" element={<Protected><PicksEpisodeRedirect /></Protected>} />
         <Route path="trades/:leagueId" element={<Protected><Trades /></Protected>} />
         <Route path="leaderboard/:leagueId" element={<Protected><Leaderboard /></Protected>} />
         <Route path="profile" element={<Protected><Profile /></Protected>} />

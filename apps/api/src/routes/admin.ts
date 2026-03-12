@@ -1078,6 +1078,75 @@ adminRouter.post('/leagues/:leagueId/point-adjustments', async (req: Request, re
   res.status(201).json({ ok: true, id: row.id });
 });
 
+const votePointAdjustmentBody = z.object({
+  userId: z.coerce.number().int().positive(),
+  episodeId: z.coerce.number().int().positive(),
+  amount: z.number(),
+  note: z.string().max(256).optional(),
+});
+adminRouter.post('/leagues/:leagueId/vote-point-adjustments', async (req: Request, res: Response) => {
+  const leagueId = parseInt(req.params.leagueId, 10);
+  if (Number.isNaN(leagueId)) {
+    res.status(400).json({ error: 'Invalid league id' });
+    return;
+  }
+  const parsed = votePointAdjustmentBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid body', details: parsed.error.flatten() });
+    return;
+  }
+  const [league] = await db.select().from(leagues).where(eq(leagues.id, leagueId));
+  if (!league) {
+    res.status(404).json({ error: 'League not found' });
+    return;
+  }
+  const [member] = await db
+    .select()
+    .from(leagueMembers)
+    .where(
+      and(
+        eq(leagueMembers.leagueId, leagueId),
+        eq(leagueMembers.userId, parsed.data.userId)
+      )
+    );
+  if (!member) {
+    res.status(400).json({ error: 'User is not a member of this league' });
+    return;
+  }
+  const [ep] = await db
+    .select()
+    .from(episodes)
+    .where(and(eq(episodes.id, parsed.data.episodeId), eq(episodes.leagueId, leagueId)));
+  if (!ep) {
+    res.status(400).json({ error: 'Episode not found or does not belong to this league' });
+    return;
+  }
+  const [row] = await db
+    .insert(ledgerTransactions)
+    .values({
+      leagueId,
+      userId: parsed.data.userId,
+      amount: parsed.data.amount,
+      reason: 'vote_prediction',
+      referenceType: 'episode',
+      referenceId: parsed.data.episodeId,
+    })
+    .returning();
+  await logAudit({
+    actorUserId: req.user!.id,
+    actionType: 'admin.vote_point_adjustment',
+    entityType: 'ledger_transaction',
+    entityId: row.id,
+    afterJson: {
+      userId: parsed.data.userId,
+      episodeId: parsed.data.episodeId,
+      amount: parsed.data.amount,
+    },
+    metadataJson: { leagueId, note: parsed.data.note ?? null },
+  });
+  res.status(201).json({ ok: true, id: row.id });
+});
+
 adminRouter.post('/leagues/:leagueId/recompute-leaderboard', async (req: Request, res: Response) => {
   const leagueId = parseInt(req.params.leagueId, 10);
   if (Number.isNaN(leagueId)) {

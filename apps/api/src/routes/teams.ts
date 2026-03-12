@@ -79,6 +79,7 @@ teamsRouter.get('/:leagueId/roster/:userId', async (req: Request, res: Response)
       id: teams.id,
       contestantId: teams.contestantId,
       name: contestants.name,
+      status: contestants.status,
     })
     .from(teams)
     .innerJoin(contestants, eq(teams.contestantId, contestants.id))

@@ -99,7 +99,7 @@ export default function Leaderboard() {
             <thead className="bg-ocean-800 text-white">
               <tr>
                 <th className="text-left p-3">#</th>
-                <th className="text-left p-3">Player</th>
+                <th className="text-left p-3">Tribe / Player</th>
                 <th className="text-right p-3">Points</th>
               </tr>
             </thead>
@@ -108,7 +108,9 @@ export default function Leaderboard() {
                 <tr key={r.userId} className="border-t border-sand-200">
                   <td className="p-3">{i + 1}</td>
                   <td className="p-3">
-                    <TribePlayerLabel username={r.username} tribeName={r.tribeName} avatarUrl={r.avatarUrl} size="sm" />
+                    <Link to={`/team/${id}/user/${r.userId}`} className="hover:text-ember-600 hover:underline">
+                      <TribePlayerLabel username={r.username} tribeName={r.tribeName} avatarUrl={r.avatarUrl} size="sm" />
+                    </Link>
                   </td>
                   <td className="p-3 text-right">{Number(r.total).toFixed(0)}</td>
                 </tr>
@@ -142,7 +144,9 @@ export default function Leaderboard() {
                     <tr key={r.userId} className="border-t border-sand-200">
                       <td className="p-3">{i + 1}</td>
                       <td className="p-3">
-                        <TribePlayerLabel username={r.username} tribeName={r.tribeName} avatarUrl={r.avatarUrl} size="sm" />
+                        <Link to={`/team/${id}/user/${r.userId}`} className="hover:text-ember-600 hover:underline">
+                          <TribePlayerLabel username={r.username} tribeName={r.tribeName} avatarUrl={r.avatarUrl} size="sm" />
+                        </Link>
                       </td>
                       <td className="p-3 text-right">{Number(r.scoring_event).toFixed(0)}</td>
                       <td className="p-3 text-right">{Number(r.vote_prediction).toFixed(0)}</td>
@@ -186,7 +190,9 @@ export default function Leaderboard() {
                         <tr key={u.userId} className="border-t border-sand-200">
                           <td className="p-3">{i + 1}</td>
                           <td className="p-3">
-                            <TribePlayerLabel username={u.username} tribeName={u.tribeName} showAvatar={false} />
+                            <Link to={`/team/${id}/user/${u.userId}`} className="hover:text-ember-600 hover:underline">
+                              <TribePlayerLabel username={u.username} tribeName={u.tribeName} showAvatar={false} />
+                            </Link>
                           </td>
                           <td className="p-3 text-right">{Number(u.points).toFixed(0)}</td>
                         </tr>

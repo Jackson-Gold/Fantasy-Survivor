@@ -437,6 +437,7 @@ function AdminLeagueDetail() {
         <a href="#teams" className="text-sm text-ocean-700 hover:text-ember-600 hover:underline px-2 py-1 rounded">Teams</a>
         <a href="#trades" className="text-sm text-ocean-700 hover:text-ember-600 hover:underline px-2 py-1 rounded">Trades</a>
         <a href="#adjustments" className="text-sm text-ocean-700 hover:text-ember-600 hover:underline px-2 py-1 rounded">Point adjustments</a>
+        <a href="#vote-adjustments" className="text-sm text-ocean-700 hover:text-ember-600 hover:underline px-2 py-1 rounded">Vote point adjustments</a>
         <a href="#scoring" className="text-sm text-ocean-700 hover:text-ember-600 hover:underline px-2 py-1 rounded">Scoring</a>
         <a href="#export" className="text-sm text-ocean-700 hover:text-ember-600 hover:underline px-2 py-1 rounded">Export</a>
       </nav>
@@ -449,6 +450,7 @@ function AdminLeagueDetail() {
       <div id="teams"><AdminLeagueRosters leagueId={leagueId} contestants={contestants} /></div>
       <div id="trades"><AdminLeagueTrades leagueId={leagueId} /></div>
       <div id="adjustments"><AdminLeaguePointAdjustments leagueId={leagueId} /></div>
+      <div id="vote-adjustments"><AdminLeagueVotePointAdjustments leagueId={leagueId} episodes={episodes} /></div>
       <div id="scoring"><AdminLeagueScoringRules leagueId={leagueId} scoringRules={scoringRules} /></div>
       <div id="export"><AdminLeagueExport leagueId={leagueId} /></div>
     </div>
@@ -1430,6 +1432,133 @@ function AdminLeaguePointAdjustments({ leagueId }: { leagueId: number }) {
         </button>
       </form>
       {message && <p className={`mt-2 text-sm ${message.includes('applied') ? 'text-jungle-700' : 'text-ocean-600'}`}>{message}</p>}
+    </div>
+  );
+}
+
+function AdminLeagueVotePointAdjustments({
+  leagueId,
+  episodes,
+}: {
+  leagueId: number;
+  episodes: Episode[];
+}) {
+  const qc = useQueryClient();
+  const [userId, setUserId] = useState<number | ''>('');
+  const [episodeId, setEpisodeId] = useState<number | ''>('');
+  const [amount, setAmount] = useState<string>('');
+  const [note, setNote] = useState('');
+  const [message, setMessage] = useState<string | null>(null);
+  const { data: winnerPicksData } = useQuery({
+    queryKey: ['admin-leagues', leagueId, 'winner-picks'],
+    queryFn: () =>
+      apiGet<{ winnerPicks: { userId: number; username: string; tribeName?: string | null }[] }>(
+        `/admin/leagues/${leagueId}/winner-picks`
+      ),
+    enabled: leagueId > 0,
+  });
+  const members = winnerPicksData?.winnerPicks ?? [];
+  const submitVoteAdjustment = useMutation({
+    mutationFn: (body: { userId: number; episodeId: number; amount: number; note?: string }) =>
+      apiPost(`/admin/leagues/${leagueId}/vote-point-adjustments`, body),
+    onSuccess: () => {
+      setUserId('');
+      setEpisodeId('');
+      setAmount('');
+      setNote('');
+      setMessage('Vote point adjustment applied.');
+      qc.invalidateQueries({ queryKey: ['leaderboard', leagueId] });
+      qc.invalidateQueries({ queryKey: ['leaderboard', leagueId, 'breakdown'] });
+      qc.invalidateQueries({ queryKey: ['admin-leagues', leagueId] });
+    },
+    onError: (err: Error) => setMessage(err.message),
+  });
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const amt = parseFloat(amount);
+    if (userId === '' || episodeId === '' || Number.isNaN(amt)) {
+      setMessage('Select user, episode, and enter an amount.');
+      return;
+    }
+    setMessage(null);
+    submitVoteAdjustment.mutate({
+      userId,
+      episodeId,
+      amount: amt,
+      note: note.trim() || undefined,
+    });
+  };
+  return (
+    <div className="card-tribal p-4 mt-4">
+      <h3 className="font-semibold text-ocean-800 mb-3">Vote point adjustments (tally votes)</h3>
+      <p className="text-ocean-600 text-sm mb-3">
+        Manually add or subtract vote points for a player for a specific episode. These appear under the &quot;Votes&quot; column on the leaderboard.
+      </p>
+      <form onSubmit={handleSubmit} className="flex flex-wrap gap-3 items-end">
+        <div>
+          <label className="block text-xs font-medium text-ocean-700 mb-1">User</label>
+          <select
+            value={userId}
+            onChange={(e) => setUserId(e.target.value === '' ? '' : Number(e.target.value))}
+            className="input-tribal min-w-[120px]"
+          >
+            <option value="">—</option>
+            {members.map((m) => (
+              <option key={m.userId} value={m.userId}>
+                {m.tribeName?.trim() || m.username}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-ocean-700 mb-1">Episode</label>
+          <select
+            value={episodeId}
+            onChange={(e) => setEpisodeId(e.target.value === '' ? '' : Number(e.target.value))}
+            className="input-tribal min-w-[140px]"
+          >
+            <option value="">—</option>
+            {episodes.map((ep) => (
+              <option key={ep.id} value={ep.id}>
+                Ep {ep.episodeNumber} {ep.title ?? ''}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-ocean-700 mb-1">Amount</label>
+          <input
+            type="number"
+            step="any"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            placeholder="e.g. 5 or -2"
+            className="input-tribal w-28"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-ocean-700 mb-1">Note (optional)</label>
+          <input
+            type="text"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="Reason"
+            className="input-tribal min-w-[140px]"
+          />
+        </div>
+        <button type="submit" className="btn-primary" disabled={submitVoteAdjustment.isPending}>
+          {submitVoteAdjustment.isPending ? 'Applying…' : 'Apply vote points'}
+        </button>
+      </form>
+      {message && (
+        <p
+          className={`mt-2 text-sm ${
+            message.includes('applied') ? 'text-jungle-700' : 'text-ocean-600'
+          }`}
+        >
+          {message}
+        </p>
+      )}
     </div>
   );
 }
