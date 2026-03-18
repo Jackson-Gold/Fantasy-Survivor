@@ -84,7 +84,7 @@ export default function Picks() {
 
   const allContestants = contestantsData?.contestants ?? [];
   const activeContestants = useMemo(
-    () => allContestants.filter((c) => (c as { status?: string }).status !== 'eliminated'),
+    () => allContestants.filter((c) => (c as { status?: string }).status === 'active'),
     [allContestants]
   );
   const contestantById = useMemo(() => {
@@ -200,7 +200,7 @@ export default function Picks() {
               {new Date(votesData.lockAt).toLocaleString()}
             </p>
             <p className="text-ocean-600 text-sm mb-3">
-              Only active contestants are shown; eliminated players are removed from the island.
+              Only active contestants are shown; players who are eliminated or otherwise out of the game (e.g. evacuated) do not appear here.
               Allocate {voteTotal} votes across them. How likely is each to be voted out?
             </p>
             {locked && (
@@ -402,14 +402,14 @@ function OtherEpisodeRow({
               .filter((a) => a.votes > 0)
               .map((a) => {
                 const c = contestantById[a.contestantId];
-                const eliminated = c && (c as { status?: string }).status === 'eliminated';
+                const outOfGame = c && (c as { status?: string }).status !== 'active';
                 return (
                   <li key={a.contestantId} className="flex items-center gap-2 text-sm">
                     <span className="text-ocean-800">{a.name ?? `Contestant #${a.contestantId}`}</span>
                     <span className="text-sand-500">{a.votes} votes</span>
-                    {eliminated && (
+                    {outOfGame && (
                       <span className="text-xs px-1.5 py-0.5 rounded bg-amber-200 text-amber-900">
-                        Eliminated
+                        Out
                       </span>
                     )}
                   </li>

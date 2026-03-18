@@ -112,26 +112,30 @@ export default function TeamView() {
       </div>
 
       {targetUser != null && (
-        <div className="card-tribal p-4 mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <div>
-            <h3 className="text-sm font-medium text-ocean-700">Total points</h3>
-            <p className="text-xl font-bold text-ocean-900">
+        <>
+          <div className="card-tribal p-6 mb-4 text-center">
+            <p className="text-sm font-medium text-ocean-700 uppercase tracking-wide">Points</p>
+            <p className="text-4xl font-bold text-ocean-900 mt-1">
               {Number(targetUser.total).toFixed(0)}
             </p>
+            <p className="text-sand-600 text-sm mt-1">Total points accrued</p>
           </div>
-          <div>
-            <h3 className="text-sm font-medium text-ocean-700">Roster points</h3>
-            <p className="text-xl font-bold text-ocean-900">
-              {Number(targetUser.scoring_event).toFixed(0)}
-            </p>
+          <div className="card-tribal p-4 mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div>
+              <h3 className="text-sm font-medium text-ocean-700">Roster points</h3>
+              <p className="text-xl font-bold text-ocean-900">
+                {Number(targetUser.scoring_event).toFixed(0)}
+              </p>
+              <p className="text-sand-600 text-xs">From team outcomes</p>
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-ocean-700">Roster status</h3>
+              <p className="text-ocean-900">
+                {activeCount} active{eliminatedCount > 0 ? `, ${eliminatedCount} out` : ''}
+              </p>
+            </div>
           </div>
-          <div>
-            <h3 className="text-sm font-medium text-ocean-700">Roster status</h3>
-            <p className="text-ocean-900">
-              {activeCount} active{eliminatedCount > 0 ? `, ${eliminatedCount} out` : ''}
-            </p>
-          </div>
-        </div>
+        </>
       )}
 
       {pointsByEpisode.length > 0 && (
