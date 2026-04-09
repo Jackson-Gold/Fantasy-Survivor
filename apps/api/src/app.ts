@@ -11,6 +11,7 @@ import { tradesRouter } from './routes/trades.js';
 import { leaderboardRouter } from './routes/leaderboard.js';
 import { activityRouter } from './routes/activity.js';
 import { profileRouter } from './routes/profile.js';
+import { versusRouter } from './routes/versus.js';
 
 const corsOrigins = (process.env.CORS_ORIGINS ?? 'http://localhost:5173').split(',').map((o) => o.trim()).filter(Boolean);
 
@@ -45,6 +46,7 @@ export function createApp() {
   app.use('/api/v1/leaderboard', leaderboardRouter);
   app.use('/api/v1/activity', activityRouter);
   app.use('/api/v1/profile', profileRouter);
+  app.use('/api/v1/versus', versusRouter);
 
   const uploadsDir = process.env.UPLOAD_PATH || path.join(process.cwd(), 'uploads');
   app.use('/api/v1/uploads', express.static(uploadsDir));

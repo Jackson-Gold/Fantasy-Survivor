@@ -11,6 +11,7 @@ import TeamView from './pages/TeamView';
 import Picks from './pages/Picks';
 import Trades from './pages/Trades';
 import Leaderboard from './pages/Leaderboard';
+import Versus from './pages/Versus';
 import Profile from './pages/Profile';
 import Admin from './pages/Admin';
 
@@ -59,6 +60,7 @@ export default function App() {
         <Route path="picks/:leagueId/episode/:episodeId" element={<Protected><PicksEpisodeRedirect /></Protected>} />
         <Route path="trades/:leagueId" element={<Protected><Trades /></Protected>} />
         <Route path="leaderboard/:leagueId" element={<Protected><Leaderboard /></Protected>} />
+        <Route path="versus/:leagueId" element={<Protected><Versus /></Protected>} />
         <Route path="profile" element={<Protected><Profile /></Protected>} />
         <Route path="admin/*" element={<AdminOnly><Admin /></AdminOnly>} />
       </Route>

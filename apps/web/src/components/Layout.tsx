@@ -59,6 +59,12 @@ export default function Layout() {
                     >
                       Leaderboard
                     </Link>
+                    <Link
+                      to={`/versus/${currentLeague.id}`}
+                      className={`font-medium transition-colors ${location.pathname.startsWith('/versus/') ? 'text-ember-400' : 'text-white/90 hover:text-ember-300'}`}
+                    >
+                      Versus
+                    </Link>
                   </>
                 )}
                 <Link

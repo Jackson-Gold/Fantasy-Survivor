@@ -319,7 +319,17 @@ function AdminAudit() {
   );
 }
 
-type League = { id: number; name: string; seasonName: string | null; inviteCode: string | null; voteTotal?: number | null };
+type League = {
+  id: number;
+  name: string;
+  seasonName: string | null;
+  inviteCode: string | null;
+  voteTotal?: number | null;
+  versusWinPoints?: number | null;
+  versusPredImmunityPts?: number | null;
+  versusPredBootPts?: number | null;
+  versusPredIdolPts?: number | null;
+};
 type Contestant = { id: number; leagueId: number; name: string; status: string; eliminatedEpisodeId: number | null };
 type Episode = { id: number; leagueId: number; episodeNumber: number; title: string | null; airDate: string; lockAt: string };
 type ScoringRule = { id: number; leagueId: number; actionType: string; points: number };
@@ -354,8 +364,16 @@ function AdminLeagueDetail() {
   });
 
   const patchLeague = useMutation({
-    mutationFn: (body: { name?: string; seasonName?: string; regenerateInviteCode?: boolean; voteTotal?: number }) =>
-      apiPatch<League>(`/admin/leagues/${leagueId}`, body),
+    mutationFn: (body: {
+      name?: string;
+      seasonName?: string;
+      regenerateInviteCode?: boolean;
+      voteTotal?: number;
+      versusWinPoints?: number;
+      versusPredImmunityPts?: number;
+      versusPredBootPts?: number;
+      versusPredIdolPts?: number;
+    }) => apiPatch<League>(`/admin/leagues/${leagueId}`, body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['admin-league', leagueId] });
       qc.invalidateQueries({ queryKey: ['admin-leagues'] });
@@ -414,6 +432,70 @@ function AdminLeagueDetail() {
             />
             <p className="text-xs text-sand-600 mt-0.5">Total votes each player must allocate per episode.</p>
           </div>
+          <div>
+            <label className="block text-sm font-medium text-ocean-800 mb-1">Versus win bonus (pts)</label>
+            <input
+              type="number"
+              min={0}
+              max={1000}
+              defaultValue={league.versusWinPoints ?? 10}
+              onBlur={(e) => {
+                const v = parseInt(e.target.value, 10);
+                if (!Number.isNaN(v) && v >= 0 && v <= 1000 && v !== (league.versusWinPoints ?? 10)) {
+                  patchLeague.mutate({ versusWinPoints: v });
+                }
+              }}
+              className="input-tribal w-24"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-ocean-800 mb-1">Versus pred: immunity pts</label>
+            <input
+              type="number"
+              min={0}
+              max={100}
+              defaultValue={league.versusPredImmunityPts ?? 5}
+              onBlur={(e) => {
+                const v = parseInt(e.target.value, 10);
+                if (!Number.isNaN(v) && v >= 0 && v <= 100 && v !== (league.versusPredImmunityPts ?? 5)) {
+                  patchLeague.mutate({ versusPredImmunityPts: v });
+                }
+              }}
+              className="input-tribal w-24"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-ocean-800 mb-1">Versus pred: boot pts</label>
+            <input
+              type="number"
+              min={0}
+              max={100}
+              defaultValue={league.versusPredBootPts ?? 5}
+              onBlur={(e) => {
+                const v = parseInt(e.target.value, 10);
+                if (!Number.isNaN(v) && v >= 0 && v <= 100 && v !== (league.versusPredBootPts ?? 5)) {
+                  patchLeague.mutate({ versusPredBootPts: v });
+                }
+              }}
+              className="input-tribal w-24"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-ocean-800 mb-1">Versus pred: idol pts</label>
+            <input
+              type="number"
+              min={0}
+              max={100}
+              defaultValue={league.versusPredIdolPts ?? 5}
+              onBlur={(e) => {
+                const v = parseInt(e.target.value, 10);
+                if (!Number.isNaN(v) && v >= 0 && v <= 100 && v !== (league.versusPredIdolPts ?? 5)) {
+                  patchLeague.mutate({ versusPredIdolPts: v });
+                }
+              }}
+              className="input-tribal w-24"
+            />
+          </div>
           <div className="sm:col-span-2 flex items-center gap-2">
             <label className="text-sm font-medium text-ocean-800">Invite code:</label>
             <code className="bg-sand-100 px-2 py-1 rounded">{league.inviteCode ?? '—'}</code>
@@ -438,6 +520,7 @@ function AdminLeagueDetail() {
         <a href="#trades" className="text-sm text-ocean-700 hover:text-ember-600 hover:underline px-2 py-1 rounded">Trades</a>
         <a href="#adjustments" className="text-sm text-ocean-700 hover:text-ember-600 hover:underline px-2 py-1 rounded">Point adjustments</a>
         <a href="#vote-adjustments" className="text-sm text-ocean-700 hover:text-ember-600 hover:underline px-2 py-1 rounded">Vote point adjustments</a>
+        <a href="#versus" className="text-sm text-ocean-700 hover:text-ember-600 hover:underline px-2 py-1 rounded">Versus</a>
         <a href="#scoring" className="text-sm text-ocean-700 hover:text-ember-600 hover:underline px-2 py-1 rounded">Scoring</a>
         <a href="#export" className="text-sm text-ocean-700 hover:text-ember-600 hover:underline px-2 py-1 rounded">Export</a>
       </nav>
@@ -451,6 +534,7 @@ function AdminLeagueDetail() {
       <div id="trades"><AdminLeagueTrades leagueId={leagueId} /></div>
       <div id="adjustments"><AdminLeaguePointAdjustments leagueId={leagueId} /></div>
       <div id="vote-adjustments"><AdminLeagueVotePointAdjustments leagueId={leagueId} episodes={episodes} /></div>
+      <div id="versus"><AdminLeagueVersus leagueId={leagueId} episodes={episodes} /></div>
       <div id="scoring"><AdminLeagueScoringRules leagueId={leagueId} scoringRules={scoringRules} /></div>
       <div id="export"><AdminLeagueExport leagueId={leagueId} /></div>
     </div>
@@ -1559,6 +1643,227 @@ function AdminLeagueVotePointAdjustments({
           {message}
         </p>
       )}
+    </div>
+  );
+}
+
+type VersusMatchupRow = { id?: number; user1Id: number; user2Id: number | null };
+
+function AdminLeagueVersus({ leagueId, episodes }: { leagueId: number; episodes: Episode[] }) {
+  const qc = useQueryClient();
+  const [episodeId, setEpisodeId] = useState<number | ''>('');
+  const [rows, setRows] = useState<VersusMatchupRow[]>([]);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const { data: winnerPicksData } = useQuery({
+    queryKey: ['admin-leagues', leagueId, 'winner-picks'],
+    queryFn: () =>
+      apiGet<{ winnerPicks: { userId: number; username: string; tribeName?: string | null }[] }>(
+        `/admin/leagues/${leagueId}/winner-picks`
+      ),
+    enabled: leagueId > 0,
+  });
+  const members = winnerPicksData?.winnerPicks ?? [];
+
+  const { data: matchupData } = useQuery({
+    queryKey: ['admin-versus-matchups', leagueId, episodeId],
+    queryFn: () =>
+      apiGet<{ matchups: { id: number; user1Id: number; user2Id: number | null }[] }>(
+        `/admin/leagues/${leagueId}/episodes/${episodeId}/versus/matchups`
+      ),
+    enabled: leagueId > 0 && episodeId !== '',
+  });
+
+  useEffect(() => {
+    setRows([]);
+  }, [episodeId]);
+
+  useEffect(() => {
+    const m = matchupData?.matchups ?? [];
+    setRows(m.map((r) => ({ id: r.id, user1Id: r.user1Id, user2Id: r.user2Id })));
+  }, [matchupData]);
+
+  const randomize = useMutation({
+    mutationFn: () =>
+      apiPost<{ matchups: { user1Id: number; user2Id: number | null }[] }>(
+        `/admin/leagues/${leagueId}/episodes/${episodeId}/versus/matchups/randomize`,
+        {}
+      ),
+    onSuccess: (data) => {
+      setMsg('Matchups randomized.');
+      setRows((data.matchups ?? []).map((r) => ({ user1Id: r.user1Id, user2Id: r.user2Id })));
+      qc.invalidateQueries({ queryKey: ['admin-versus-matchups', leagueId, episodeId] });
+    },
+    onError: (e: Error) => setMsg(e.message),
+  });
+
+  const saveMatchups = useMutation({
+    mutationFn: () =>
+      apiPut<{ matchups: VersusMatchupRow[] }>(`/admin/leagues/${leagueId}/episodes/${episodeId}/versus/matchups`, {
+        matchups: rows.map((r) => ({ user1Id: r.user1Id, user2Id: r.user2Id })),
+      }),
+    onSuccess: () => {
+      setMsg('Matchups saved.');
+      qc.invalidateQueries({ queryKey: ['admin-versus-matchups', leagueId, episodeId] });
+    },
+    onError: (e: Error) => setMsg(e.message),
+  });
+
+  const preview = useMutation({
+    mutationFn: () =>
+      apiPost<{ preview: { score1: number; score2: number | null; amountUser1: number; amountUser2: number }[] }>(
+        `/admin/leagues/${leagueId}/episodes/${episodeId}/versus/preview`,
+        {}
+      ),
+    onSuccess: (data) => {
+      setMsg(`Preview: ${JSON.stringify(data.preview)}`);
+    },
+    onError: (e: Error) => setMsg(e.message),
+  });
+
+  const settle = useMutation({
+    mutationFn: () =>
+      apiPost<{ rows: unknown[] }>(`/admin/leagues/${leagueId}/episodes/${episodeId}/versus/settle`, {}),
+    onSuccess: (data) => {
+      setMsg(`Settled. ${data.rows?.length ?? 0} matchup(s).`);
+      qc.invalidateQueries({ queryKey: ['leaderboard', leagueId] });
+      qc.invalidateQueries({ queryKey: ['leaderboard', leagueId, 'breakdown'] });
+    },
+    onError: (e: Error) => setMsg(e.message),
+  });
+
+  const memberLabel = (uid: number) => {
+    const m = members.find((x) => x.userId === uid);
+    return m ? m.tribeName?.trim() || m.username : `#${uid}`;
+  };
+
+  return (
+    <div className="card-tribal p-4 mt-4">
+      <h3 className="font-semibold text-ocean-800 mb-2">Versus (head-to-head)</h3>
+      <p className="text-ocean-600 text-sm mb-3">
+        Randomize or edit weekly pairings. After episode outcomes are entered, preview scores then settle to award
+        &quot;Versus&quot; points (ties split the win bonus). Re-settle after outcome edits if needed.
+      </p>
+      <div className="flex flex-wrap gap-3 items-end mb-4">
+        <div>
+          <label className="block text-xs font-medium text-ocean-700 mb-1">Episode</label>
+          <select
+            value={episodeId}
+            onChange={(e) => {
+              setEpisodeId(e.target.value === '' ? '' : Number(e.target.value));
+              setMsg(null);
+            }}
+            className="input-tribal min-w-[160px]"
+          >
+            <option value="">—</option>
+            {episodes.map((ep) => (
+              <option key={ep.id} value={ep.id}>
+                Ep {ep.episodeNumber} {ep.title ?? ''}
+              </option>
+            ))}
+          </select>
+        </div>
+        <button
+          type="button"
+          className="btn-primary"
+          disabled={episodeId === '' || randomize.isPending}
+          onClick={() => {
+            setMsg(null);
+            randomize.mutate();
+          }}
+        >
+          Randomize pairings
+        </button>
+        <button
+          type="button"
+          className="rounded-lg border border-ocean-600 px-3 py-2 text-ocean-800 text-sm"
+          disabled={episodeId === '' || saveMatchups.isPending}
+          onClick={() => {
+            setMsg(null);
+            saveMatchups.mutate();
+          }}
+        >
+          Save matchups
+        </button>
+        <button
+          type="button"
+          className="rounded-lg border border-sand-400 px-3 py-2 text-ocean-800 text-sm"
+          disabled={episodeId === '' || preview.isPending}
+          onClick={() => {
+            setMsg(null);
+            preview.mutate();
+          }}
+        >
+          Preview scores
+        </button>
+        <button
+          type="button"
+          className="rounded-lg bg-ember-600 text-white px-3 py-2 text-sm hover:bg-ember-700"
+          disabled={episodeId === '' || settle.isPending}
+          onClick={() => {
+            setMsg(null);
+            settle.mutate();
+          }}
+        >
+          Settle Versus
+        </button>
+      </div>
+      {episodeId !== '' && (
+        <div className="space-y-2 mb-4">
+          {rows.length === 0 ? (
+            <p className="text-sand-600 text-sm">No matchups — randomize or add rows below.</p>
+          ) : (
+            rows.map((row, i) => (
+              <div key={i} className="flex flex-wrap gap-2 items-center">
+                <select
+                  value={row.user1Id}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    const next = [...rows];
+                    next[i] = { ...next[i]!, user1Id: v };
+                    setRows(next);
+                  }}
+                  className="input-tribal min-w-[140px]"
+                >
+                  {members.map((m) => (
+                    <option key={m.userId} value={m.userId}>
+                      {m.tribeName?.trim() || m.username}
+                    </option>
+                  ))}
+                </select>
+                <span className="text-sand-500">vs</span>
+                <select
+                  value={row.user2Id ?? ''}
+                  onChange={(e) => {
+                    const v = e.target.value === '' ? null : Number(e.target.value);
+                    const next = [...rows];
+                    next[i] = { ...next[i]!, user2Id: v };
+                    setRows(next);
+                  }}
+                  className="input-tribal min-w-[140px]"
+                >
+                  <option value="">Bye</option>
+                  {members.map((m) => (
+                    <option key={m.userId} value={m.userId}>
+                      {m.tribeName?.trim() || m.username}
+                    </option>
+                  ))}
+                </select>
+                <span className="text-xs text-sand-500">{memberLabel(row.user1Id)}</span>
+              </div>
+            ))
+          )}
+          <button
+            type="button"
+            className="text-sm text-ember-600 hover:underline"
+            onClick={() => setRows([...rows, { user1Id: members[0]?.userId ?? 0, user2Id: members[1]?.userId ?? null }])}
+            disabled={members.length < 1}
+          >
+            + Add row
+          </button>
+        </div>
+      )}
+      {msg && <p className="text-sm text-ocean-700 whitespace-pre-wrap break-all">{msg}</p>}
     </div>
   );
 }

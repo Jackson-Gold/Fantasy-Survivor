@@ -30,6 +30,10 @@ export const leagues = pgTable('leagues', {
   seasonName: varchar('season_name', { length: 256 }),
   inviteCode: varchar('invite_code', { length: 32 }).unique(),
   voteTotal: integer('vote_total').default(10),
+  versusWinPoints: integer('versus_win_points').default(10),
+  versusPredImmunityPts: integer('versus_pred_immunity_pts').default(5),
+  versusPredBootPts: integer('versus_pred_boot_pts').default(5),
+  versusPredIdolPts: integer('versus_pred_idol_pts').default(5),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
@@ -127,6 +131,48 @@ export const scoringEvents = pgTable('scoring_events', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   createdByUserId: integer('created_by_user_id').references(() => users.id),
 });
+
+export const versusMatchups = pgTable(
+  'versus_matchups',
+  {
+    id: serial('id').primaryKey(),
+    leagueId: integer('league_id').notNull().references(() => leagues.id, { onDelete: 'cascade' }),
+    episodeId: integer('episode_id').notNull().references(() => episodes.id, { onDelete: 'cascade' }),
+    user1Id: integer('user1_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    user2Id: integer('user2_id').references(() => users.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [uniqueIndex('versus_matchups_league_episode_user1_idx').on(t.leagueId, t.episodeId, t.user1Id)]
+);
+
+export const versusDraftPicks = pgTable(
+  'versus_draft_picks',
+  {
+    id: serial('id').primaryKey(),
+    leagueId: integer('league_id').notNull().references(() => leagues.id, { onDelete: 'cascade' }),
+    episodeId: integer('episode_id').notNull().references(() => episodes.id, { onDelete: 'cascade' }),
+    userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    contestantId: integer('contestant_id').notNull().references(() => contestants.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [uniqueIndex('versus_draft_picks_unique').on(t.leagueId, t.episodeId, t.userId, t.contestantId)]
+);
+
+export const versusPredictions = pgTable(
+  'versus_predictions',
+  {
+    id: serial('id').primaryKey(),
+    leagueId: integer('league_id').notNull().references(() => leagues.id, { onDelete: 'cascade' }),
+    episodeId: integer('episode_id').notNull().references(() => episodes.id, { onDelete: 'cascade' }),
+    userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    slot: varchar('slot', { length: 16 }).notNull(), // immunity | boot | idol
+    contestantId: integer('contestant_id').notNull().references(() => contestants.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [uniqueIndex('versus_predictions_unique').on(t.leagueId, t.episodeId, t.userId, t.slot)]
+);
 
 export const ledgerTransactions = pgTable('ledger_transactions', {
   id: serial('id').primaryKey(),

@@ -18,6 +18,7 @@ import {
   winnerPicks,
   trades,
   tradeItems,
+  versusMatchups,
 } from '../db/schema.js';
 import { eq, and, or, desc, asc, inArray } from 'drizzle-orm';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
@@ -27,6 +28,14 @@ function generateInviteCode(): string {
 }
 import { getLockTimeForWeek } from '../lib/lock.js';
 import { logAudit } from '../lib/audit.js';
+import { settleVersusEpisode } from '../lib/versus.js';
+
+function shuffleInPlace<T>(arr: T[]): void {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+}
 
 export const adminRouter = Router();
 adminRouter.use(requireAuth, requireAdmin);
@@ -215,6 +224,10 @@ const patchLeagueBody = z.object({
   inviteCode: z.string().max(32).optional(),
   regenerateInviteCode: z.boolean().optional(),
   voteTotal: z.number().int().min(1).max(100).optional(),
+  versusWinPoints: z.number().int().min(0).max(1000).optional(),
+  versusPredImmunityPts: z.number().int().min(0).max(100).optional(),
+  versusPredBootPts: z.number().int().min(0).max(100).optional(),
+  versusPredIdolPts: z.number().int().min(0).max(100).optional(),
 });
 adminRouter.patch('/leagues/:id', async (req: Request, res: Response) => {
   const id = parseInt(req.params.id, 10);
@@ -228,10 +241,23 @@ adminRouter.patch('/leagues/:id', async (req: Request, res: Response) => {
     res.status(404).json({ error: 'League not found' });
     return;
   }
-  const updates: { name?: string; seasonName?: string; inviteCode?: string; voteTotal?: number } = {};
+  const updates: {
+    name?: string;
+    seasonName?: string;
+    inviteCode?: string;
+    voteTotal?: number;
+    versusWinPoints?: number;
+    versusPredImmunityPts?: number;
+    versusPredBootPts?: number;
+    versusPredIdolPts?: number;
+  } = {};
   if (body.data.name !== undefined) updates.name = body.data.name;
   if (body.data.seasonName !== undefined) updates.seasonName = body.data.seasonName;
   if (body.data.voteTotal !== undefined) updates.voteTotal = body.data.voteTotal;
+  if (body.data.versusWinPoints !== undefined) updates.versusWinPoints = body.data.versusWinPoints;
+  if (body.data.versusPredImmunityPts !== undefined) updates.versusPredImmunityPts = body.data.versusPredImmunityPts;
+  if (body.data.versusPredBootPts !== undefined) updates.versusPredBootPts = body.data.versusPredBootPts;
+  if (body.data.versusPredIdolPts !== undefined) updates.versusPredIdolPts = body.data.versusPredIdolPts;
   if (body.data.regenerateInviteCode || body.data.inviteCode !== undefined) {
     updates.inviteCode = body.data.inviteCode ?? generateInviteCode();
     if (!body.data.inviteCode) {
@@ -1196,6 +1222,207 @@ adminRouter.post('/leagues/:leagueId/recompute-leaderboard', async (req: Request
     metadataJson: { applied, eventCount: events.length },
   });
   res.json({ ok: true, message: `Recalculated points from ${events.length} scoring events.` });
+});
+
+// ---------- Versus (head-to-head) ----------
+adminRouter.get('/leagues/:leagueId/episodes/:episodeId/versus/matchups', async (req: Request, res: Response) => {
+  const leagueId = parseInt(req.params.leagueId, 10);
+  const episodeId = parseInt(req.params.episodeId, 10);
+  if (Number.isNaN(leagueId) || Number.isNaN(episodeId)) {
+    res.status(400).json({ error: 'Invalid id' });
+    return;
+  }
+  const [league] = await db.select().from(leagues).where(eq(leagues.id, leagueId));
+  if (!league) {
+    res.status(404).json({ error: 'League not found' });
+    return;
+  }
+  const [ep] = await db
+    .select()
+    .from(episodes)
+    .where(and(eq(episodes.id, episodeId), eq(episodes.leagueId, leagueId)));
+  if (!ep) {
+    res.status(404).json({ error: 'Episode not found' });
+    return;
+  }
+  const rows = await db
+    .select()
+    .from(versusMatchups)
+    .where(and(eq(versusMatchups.leagueId, leagueId), eq(versusMatchups.episodeId, episodeId)));
+  res.json({ matchups: rows });
+});
+
+const putVersusMatchupsBody = z.object({
+  matchups: z.array(
+    z.object({
+      user1Id: z.number().int().positive(),
+      user2Id: z.number().int().positive().nullable().optional(),
+    })
+  ),
+});
+
+adminRouter.put('/leagues/:leagueId/episodes/:episodeId/versus/matchups', async (req: Request, res: Response) => {
+  const leagueId = parseInt(req.params.leagueId, 10);
+  const episodeId = parseInt(req.params.episodeId, 10);
+  const parsed = putVersusMatchupsBody.safeParse(req.body);
+  if (Number.isNaN(leagueId) || Number.isNaN(episodeId) || !parsed.success) {
+    res.status(400).json({ error: 'Invalid body', details: parsed.success ? undefined : parsed.error.flatten() });
+    return;
+  }
+  const [ep] = await db
+    .select()
+    .from(episodes)
+    .where(and(eq(episodes.id, episodeId), eq(episodes.leagueId, leagueId)));
+  if (!ep) {
+    res.status(404).json({ error: 'Episode not found' });
+    return;
+  }
+  const memberRows = await db
+    .select({ userId: leagueMembers.userId })
+    .from(leagueMembers)
+    .where(eq(leagueMembers.leagueId, leagueId));
+  const memberSet = new Set(memberRows.map((m) => m.userId));
+  const seen = new Set<number>();
+  for (const m of parsed.data.matchups) {
+    if (!memberSet.has(m.user1Id)) {
+      res.status(400).json({ error: `user1Id ${m.user1Id} is not a league member` });
+      return;
+    }
+    if (seen.has(m.user1Id)) {
+      res.status(400).json({ error: 'Duplicate user in matchups' });
+      return;
+    }
+    seen.add(m.user1Id);
+    const u2 = m.user2Id ?? null;
+    if (u2 != null) {
+      if (!memberSet.has(u2)) {
+        res.status(400).json({ error: `user2Id ${u2} is not a league member` });
+        return;
+      }
+      if (u2 === m.user1Id) {
+        res.status(400).json({ error: 'user1 and user2 must differ' });
+        return;
+      }
+      if (seen.has(u2)) {
+        res.status(400).json({ error: 'Duplicate user in matchups' });
+        return;
+      }
+      seen.add(u2);
+    }
+  }
+  await db
+    .delete(versusMatchups)
+    .where(and(eq(versusMatchups.leagueId, leagueId), eq(versusMatchups.episodeId, episodeId)));
+  for (const m of parsed.data.matchups) {
+    await db.insert(versusMatchups).values({
+      leagueId,
+      episodeId,
+      user1Id: m.user1Id,
+      user2Id: m.user2Id ?? null,
+    });
+  }
+  await logAudit({
+    actorUserId: req.user!.id,
+    actionType: 'admin.versus_matchups.update',
+    entityType: 'episode',
+    entityId: episodeId,
+    metadataJson: { leagueId, count: parsed.data.matchups.length },
+  });
+  const rows = await db
+    .select()
+    .from(versusMatchups)
+    .where(and(eq(versusMatchups.leagueId, leagueId), eq(versusMatchups.episodeId, episodeId)));
+  res.json({ matchups: rows });
+});
+
+adminRouter.post('/leagues/:leagueId/episodes/:episodeId/versus/matchups/randomize', async (req: Request, res: Response) => {
+  const leagueId = parseInt(req.params.leagueId, 10);
+  const episodeId = parseInt(req.params.episodeId, 10);
+  if (Number.isNaN(leagueId) || Number.isNaN(episodeId)) {
+    res.status(400).json({ error: 'Invalid id' });
+    return;
+  }
+  const [ep] = await db
+    .select()
+    .from(episodes)
+    .where(and(eq(episodes.id, episodeId), eq(episodes.leagueId, leagueId)));
+  if (!ep) {
+    res.status(404).json({ error: 'Episode not found' });
+    return;
+  }
+  const memberRows = await db
+    .select({ userId: leagueMembers.userId })
+    .from(leagueMembers)
+    .where(eq(leagueMembers.leagueId, leagueId));
+  const ids = memberRows.map((m) => m.userId);
+  shuffleInPlace(ids);
+  await db
+    .delete(versusMatchups)
+    .where(and(eq(versusMatchups.leagueId, leagueId), eq(versusMatchups.episodeId, episodeId)));
+  for (let i = 0; i < ids.length; i += 2) {
+    const u1 = ids[i]!;
+    const u2 = i + 1 < ids.length ? ids[i + 1]! : null;
+    await db.insert(versusMatchups).values({
+      leagueId,
+      episodeId,
+      user1Id: u1,
+      user2Id: u2,
+    });
+  }
+  await logAudit({
+    actorUserId: req.user!.id,
+    actionType: 'admin.versus_matchups.randomize',
+    entityType: 'episode',
+    entityId: episodeId,
+    metadataJson: { leagueId, memberCount: ids.length },
+  });
+  const rows = await db
+    .select()
+    .from(versusMatchups)
+    .where(and(eq(versusMatchups.leagueId, leagueId), eq(versusMatchups.episodeId, episodeId)));
+  res.json({ matchups: rows });
+});
+
+adminRouter.post('/leagues/:leagueId/episodes/:episodeId/versus/preview', async (_req: Request, res: Response) => {
+  const leagueId = parseInt(_req.params.leagueId, 10);
+  const episodeId = parseInt(_req.params.episodeId, 10);
+  if (Number.isNaN(leagueId) || Number.isNaN(episodeId)) {
+    res.status(400).json({ error: 'Invalid id' });
+    return;
+  }
+  try {
+    const { rows } = await settleVersusEpisode(leagueId, episodeId, true);
+    res.json({ preview: rows });
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : 'Preview failed' });
+  }
+});
+
+adminRouter.post('/leagues/:leagueId/episodes/:episodeId/versus/settle', async (req: Request, res: Response) => {
+  const leagueId = parseInt(req.params.leagueId, 10);
+  const episodeId = parseInt(req.params.episodeId, 10);
+  if (Number.isNaN(leagueId) || Number.isNaN(episodeId)) {
+    res.status(400).json({ error: 'Invalid id' });
+    return;
+  }
+  const [league] = await db.select().from(leagues).where(eq(leagues.id, leagueId));
+  if (!league) {
+    res.status(404).json({ error: 'League not found' });
+    return;
+  }
+  try {
+    const { rows } = await settleVersusEpisode(leagueId, episodeId, false);
+    await logAudit({
+      actorUserId: req.user!.id,
+      actionType: 'admin.versus_settle',
+      entityType: 'episode',
+      entityId: episodeId,
+      metadataJson: { leagueId, matchups: rows.length },
+    });
+    res.json({ ok: true, rows });
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : 'Settle failed' });
+  }
 });
 
 // ---------- Audit log & ledger (read-only export) ----------
